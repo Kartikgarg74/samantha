@@ -1,19 +1,24 @@
 #!/usr/bin/env python3
 """
 Samantha - AI Voice Assistant
-Main entry point for the voice assistant with speech recognition and natural language processing.
+Main entry point for the voice assistant with Faster-Whisper speech recognition and natural language processing.
 """
 
-import speech_recognition as sr
-import pyttsx3
-import threading
+import os
 import time
 import sys
-import os
+import threading
+import random
+import json
+import signal
+from datetime import datetime
 
 # Add current directory to path for imports
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
+# Import our custom modules
+from assistant.speech_recognition_service import SpeechRecognizer
+from assistant.tts_service import TTSService
 from assistant.intent_classifier import classify_intent
 from assistant.spotify_control import control_spotify
 from assistant.browser_control import browser_action
@@ -24,23 +29,45 @@ class SamanthaAssistant:
         """Initialize the voice assistant"""
         print("🤖 Initializing Samantha...")
 
-        # Initialize speech recognition
-        self.recognizer = sr.Recognizer()
-        self.microphone = sr.Microphone()
+        # Initialize speech recognition (using Faster-Whisper now)
+        # Force CPU mode to avoid MPS issues
+        self.recognizer = SpeechRecognizer(model_size="tiny", device="cpu")
 
-        # Initialize text-to-speech
-        self.tts_engine = pyttsx3.init()
-        self._configure_tts()
+        # Initialize text-to-speech (using our new service)
+        self.tts_engine = TTSService()
 
         # Assistant state
         self.listening = False
         self.running = True
+        self.continuous_mode = False
 
         # Wake words
         self.wake_words = ["samantha", "hey samantha", "hello samantha"]
 
+        # Conversation history
+        self.conversation_history = []
+
+        # Register signal handlers for graceful shutdown
+        signal.signal(signal.SIGINT, self._signal_handler)
+        signal.signal(signal.SIGTERM, self._signal_handler)
+
         print("✅ Samantha initialized successfully!")
         self._speak("Hello! I'm Samantha, your voice assistant. Say 'Hey Samantha' to wake me up.")
+
+    def _speak(self, text: str):
+        """Convert text to speech using our TTS service"""
+        try:
+            # Add to conversation history
+            self.conversation_history.append({
+                "speaker": "assistant",
+                "text": text,
+                "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            })
+
+            # Use our TTS service to speak
+            self.tts_engine.speak(text)
+        except Exception as e:
+            print(f"❌ Speech error: {e}")
 
     def _configure_tts(self):
         """Configure text-to-speech settings"""
@@ -64,38 +91,27 @@ class SamanthaAssistant:
         except Exception as e:
             print(f"⚠️ TTS configuration warning: {e}")
 
-    def _speak(self, text: str):
-        """Convert text to speech"""
-        try:
-            print(f"🗣️  Samantha: {text}")
-            self.tts_engine.say(text)
-            self.tts_engine.runAndWait()
-        except Exception as e:
-            print(f"❌ Speech error: {e}")
-
     def _listen(self, timeout: int = 5) -> str:
-        """Listen for audio input and convert to text"""
+        """Listen for audio input and convert to text using Vosk"""
         try:
-            with self.microphone as source:
-                print("🎤 Listening...")
-                # Adjust for ambient noise
-                self.recognizer.adjust_for_ambient_noise(source, duration=0.5)
-                # Listen for audio with timeout
-                audio = self.recognizer.listen(source, timeout=timeout, phrase_time_limit=10)
+            print("🎤 Listening...")
+            # Use our Vosk-based recognizer instead of PyAudio
+            text = self.recognizer.listen(timeout=timeout)
 
-            print("🔄 Processing speech...")
-            # Recognize speech using Google's service
-            text = self.recognizer.recognize_google(audio).lower()
-            print(f"👤 You said: {text}")
-            return text
+            if text:
+                text = text.lower()
+                print(f"👤 You said: {text}")
 
-        except sr.UnknownValueError:
+                # Add to conversation history
+                self.conversation_history.append({
+                    "speaker": "user",
+                    "text": text,
+                    "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                })
+
+                return text
             return ""
-        except sr.RequestError as e:
-            print(f"❌ Speech recognition error: {e}")
-            return ""
-        except sr.WaitTimeoutError:
-            return ""
+
         except Exception as e:
             print(f"❌ Listening error: {e}")
             return ""
@@ -161,7 +177,6 @@ class SamanthaAssistant:
             "Hey! I'm here to assist you.",
             "Hello! Ready to help with Spotify, browser, or WhatsApp tasks!"
         ]
-        import random
         return random.choice(greetings)
 
     def _handle_goodbye(self, command: str) -> str:
@@ -175,6 +190,7 @@ class SamanthaAssistant:
 
         if any(word in command_lower for word in ["stop listening", "stop", "quiet", "shut up"]):
             self.listening = False
+            self.continuous_mode = False
             return "I'll stop listening now. Say 'Hey Samantha' to wake me up again."
 
         elif any(word in command_lower for word in ["what can you do", "help", "capabilities"]):
@@ -197,13 +213,15 @@ class SamanthaAssistant:
             self.tts_engine.setProperty('volume', new_volume)
             return "I'll speak more quietly now."
 
+        elif any(word in command_lower for word in ["listen continuously", "continuous mode"]):
+            self.continuous_mode = True
+            return "I'm now in continuous listening mode. You can speak commands without saying my wake word first."
+
         else:
             return "I'm here and listening! How can I help you?"
 
     def _handle_time_date(self, command: str) -> str:
         """Handle time and date queries"""
-        from datetime import datetime
-
         now = datetime.now()
         command_lower = command.lower()
 
@@ -226,8 +244,22 @@ class SamanthaAssistant:
             "I'm still learning about that topic. For now, I can help with music, web browsing, and messaging.",
             "I don't have information about that yet, but I can help you with Spotify controls, web browsing, or WhatsApp!"
         ]
-        import random
         return random.choice(responses)
+
+    def _save_conversation_history(self):
+        """Save the conversation history to a JSON file"""
+        try:
+            with open("conversation_history.json", "w") as f:
+                json.dump(self.conversation_history, f, indent=4)
+        except Exception as e:
+            print(f"❌ Error saving conversation history: {e}")
+
+    def _signal_handler(self, sig, frame):
+        """Handle program termination signals"""
+        print("\n👋 Shutting down Samantha...")
+        self.running = False
+        self._save_conversation_history()
+        sys.exit(0)
 
     def run(self):
         """Main loop for the voice assistant"""
@@ -241,8 +273,18 @@ class SamanthaAssistant:
 
         try:
             while self.running:
-                if not self.listening:
-                    # Listen for wake word
+                if self.continuous_mode:
+                    # In continuous mode, listen for commands directly
+                    command_speech = self._listen(timeout=5)
+                    if command_speech:
+                        response = self._process_command(command_speech)
+                        self._speak(response)
+
+                        # If goodbye command was given
+                        if not self.running:
+                            break
+                else:
+                    # Regular mode - listen for wake word
                     speech = self._listen(timeout=1)
                     if speech and self._check_wake_word(speech):
                         self.listening = True
@@ -253,13 +295,14 @@ class SamanthaAssistant:
                         if command_speech:
                             response = self._process_command(command_speech)
                             self._speak(response)
+
+                            # If goodbye command was given
+                            if not self.running:
+                                break
                         else:
                             self._speak("I didn't hear anything. Say 'Hey Samantha' to try again.")
 
                         self.listening = False
-
-                else:
-                    time.sleep(0.1)
 
         except KeyboardInterrupt:
             print("\n👋 Goodbye!")
@@ -267,10 +310,15 @@ class SamanthaAssistant:
         except Exception as e:
             print(f"❌ Assistant error: {e}")
             self._speak("I encountered an error. Goodbye!")
+        finally:
+            # Save conversation history on exit
+            self._save_conversation_history()
 
 def main():
     """Main function to start the assistant"""
     print("🚀 Starting Samantha Voice Assistant...")
+    print(f"Current Date and Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"Current User: {os.getlogin()}")
 
     try:
         assistant = SamanthaAssistant()

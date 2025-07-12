@@ -1,184 +1,131 @@
-Thanks for sharing your current `README.md` — it's already clean and well-structured. Based on your full project scope and updated directory structure, here’s a **refined and more complete version** of your README that adds:
+# 🎤 Samantha Voice Assistant
 
-* 📁 Folder structure for clarity
-* 🧪 Testing guide
-* ⚠️ macOS and Apple Silicon tips
-* ✅ Environment variable and virtual environment tips
-* 📋 Contribution section (optional if you're working solo now)
+A lightweight, modular voice assistant built specifically for macOS (including Apple Silicon). Control browsers, play music, send messages, and automate tasks through natural voice commands.
 
-You can **copy-paste this directly** into your `README.md` file and adapt GitHub URL or any field later.
+## ✨ Features
 
----
+- 🗣️ **Advanced Speech Recognition** using Whisper (tiny model)
+- 🔊 **Natural Text-to-Speech** with multiple fallback options
+- 🌐 **Browser Control** for any website with intelligent search handling
+- 🤖 **Intent Classification** to understand natural language commands
+- 🎵 **Media Control** for Spotify and other music players
+- 💬 **WhatsApp Integration** for messaging
+- ⚙️ **System Automation** for macOS
+- 🧩 **Modular & Extensible Architecture**
 
-```markdown
-# 🧠 AI Personal Assistant for macOS (Apple Silicon)
+## 📋 Requirements
 
-An AI-powered personal assistant built specifically for macOS with Apple Silicon. It automates tasks such as browser control, app switching, WhatsApp messaging, Spotify control, and deep web search — all through voice or text commands.
-
----
-
-## 🚀 Key Features
-
-- 🖥️ **System Automation**
-  Open/close apps, simulate keystrokes and mouse clicks, switch between windows.
-
-- 🌐 **Brave Browser Control**
-  Tab management, web search, navigation, and incognito mode control.
-
-- 💬 **WhatsApp Desktop Control**
-  Open chats, send messages, and **(coming soon)** handle calls.
-
-- 🎵 **Spotify Playback Control**
-  Play, pause, skip, and search songs/playlists on the desktop app.
-
-- 🔍 **Web Search Module**
-  Deep contextual web scraping and summarization via natural language.
-
-- 🧠 **Intent Classification**
-  Uses `microsoft/dialogp-small` to parse and route user instructions.
-
-- 🧩 **Modular & Extendable Architecture**
-
----
-
-## 🧰 Tech Stack
-
-| Category         | Tools Used                                         |
-|------------------|----------------------------------------------------|
-| Language         | Python 3.12+                                       |
-| ML Model         | Microsoft/Dialogp-small (local, 500MB)             |
-| Voice/Text Input | Pyttsx3, SoundDevice *(no PyAudio)*                |
-| Automation       | PyAutoGUI, AppleScript, Selenium                   |
-| Web Scraping     | Requests, BeautifulSoup                            |
-| Testing          | Pytest                                             |
-| OS               | macOS (Apple Silicon - M1/M2/M3)                   |
-
----
-
-## 📁 Folder Structure
-
-```
-
-personal-assistant/
-├── assistant/                    # Core logic modules
-│   ├── browser\_control.py       # Brave browser control
-│   ├── system\_automation.py     # macOS app & system control
-│   ├── whatsapp\_integration.py  # WhatsApp Desktop automation
-│   ├── spotify\_control.py       # Spotify automation
-│   ├── web\_search.py            # Deep search and scraping
-│   ├── intent\_classifier.py     # NLU model wrapper
-│   └── gui\_interface.py         # (Optional) GUI elements
-├── data/
-│   └── interaction\_logs.json    # Log of assistant interactions
-├── tests/
-│   ├── test\_browser\_control.py
-│   ├── test\_system\_automation.py
-│   └── test\_intent\_classifier.py
-├── Dockerfile
-├── requirements.txt
-├── main.py                      # Entry point
-├── README.md
-
-````
-
----
+- macOS (tested on Apple Silicon)
+- Python 3.8+
+- Microphone access
+- Internet connection (for model download)
 
 ## 🛠️ Installation
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/YOUR_USERNAME/ai-personal-assistant.git
-   cd ai-personal-assistant
-````
+   git clone https://github.com/yourusername/samantha.git
+   cd samantha
+   ```
 
-2. (Recommended) Create a virtual environment:
-
+2. Create a virtual environment:
    ```bash
-   python3 -m venv samantha_env
+   python -m venv samantha_env
    source samantha_env/bin/activate
    ```
 
-3. Install all dependencies:
-
+3. Install dependencies:
    ```bash
    pip install -r requirements.txt
    ```
 
 4. Run the assistant:
-
    ```bash
    python main.py
    ```
 
----
+## 📁 Project Structure
 
-## 🧪 Running Tests
-
-```bash
-pytest tests/
+```
+samantha/
+├── main.py                            # Main entry point
+├── requirements.txt                   # Dependencies
+├── user_preferences.json              # User settings (created automatically)
+├── conversation_history.json          # Log of interactions (created automatically)
+└── assistant/
+    ├── __init__.py                    # Assistant package initialization
+    ├── speech_recognition_service.py  # Speech recognition using Whisper
+    ├── tts_service.py                 # Text-to-speech with multiple backends
+    ├── browser_control.py             # Browser control implementation
+    ├── commands/                      # Command modules
+        ├── __init__.py                # Commands package initialization
+        └── browser_commands.py        # Browser command handlers
 ```
 
-Make sure you have `pytest` installed:
+## 🧰 Tech Stack
 
-```bash
-pip install pytest
-```
+| Component | Technology |
+|-----------|------------|
+| Speech Recognition | Faster-Whisper (tiny model) |
+| Text-to-Speech | Custom service with pyttsx3 & system fallbacks |
+| Intent Processing | Custom NLP pipeline |
+| Browser Automation | Custom implementation using webbrowser |
+| OS Integration | Native macOS commands |
 
----
+## 🗣️ Voice Commands
 
-## 🐳 Docker Support (Optional)
+Activate Samantha by saying "Hey Samantha" or "Hello Samantha," then try commands like:
 
-Build the container:
+- "Open Chrome and search for weather in New York"
+- "Play music on Spotify"
+- "Send a WhatsApp message to Mom"
+- "What's the time?"
+- "Set a timer for 5 minutes"
+- "Tell me a joke"
 
-```bash
-docker build -t ai-personal-assistant .
-```
+## ⚙️ macOS Configuration
 
-Run it:
+For full functionality, grant permissions:
 
-```bash
-docker run -it ai-personal-assistant
-```
+1. **System Settings → Privacy & Security → Accessibility**
+   - Grant access to Terminal/iTerm and Python
 
-> ⚠️ Note: macOS GUI apps (like WhatsApp, Brave) are not fully Docker-compatible. Docker support is best for headless testing or future API-based features.
+2. **System Settings → Privacy & Security → Microphone**
+   - Grant access to Terminal/iTerm and Python
 
----
+## 🔧 Troubleshooting
 
-## 📅 Future Enhancements
+- **Microphone not working?** Check system permissions and try `pip install miniaudio`
+- **Text-to-speech issues?** Try `pip install pyobjc` or use system TTS
+- **Model download failing?** Try manual download from https://huggingface.co/models
 
-* [ ] Add Whisper STT for accurate voice control.
-* [ ] Memory module for user-specific context.
-* [ ] Email, calendar, and Zoom integrations.
-* [ ] CLI & GUI hybrid interface.
-* [ ] Scheduled task execution and smart reminders.
+## 🔮 Future Enhancements
 
----
-
-## ⚙️ macOS Notes
-
-* Make sure **System Accessibility** is enabled for automation.
-* Go to **System Settings → Privacy & Security → Accessibility**, and grant access to:
-
-  * Terminal / iTerm / VSCode (if using)
-  * Python interpreter
-* If using `osascript`, ensure correct AppleScript syntax for launching and switching apps.
-
----
-
-## 🤝 Contribution
-
-Feel free to fork the repo and submit PRs if you'd like to contribute!
-Open issues for bugs, feature suggestions, or questions.
-
----
+- [ ] Integration with calendar and reminders
+- [ ] Smart home device control
+- [ ] Expanded knowledge base
+- [ ] Context-aware conversations
+- [ ] Custom voice and personality options
 
 ## 👤 Author
 
 **Kartik Garg**
 📧 [gargkartik74@gmail.com](mailto:gargkartik74@gmail.com)
 
----
-
 ## 📜 License
 
 MIT License — See `LICENSE` file for details.
+```
+
+This README provides a comprehensive overview of your Samantha voice assistant project, including:
+
+- Clear feature description
+- Installation instructions
+- Project structure
+- Tech stack breakdown
+- Voice command examples
+- macOS configuration guidance
+- Troubleshooting tips
+- Future enhancement roadmap
+
+The structure is clean and professional, making it easy for anyone to understand what Samantha does and how to get started with it. The formatting includes appropriate emojis and markdown formatting for improved readability.
