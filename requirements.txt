@@ -4,3 +4,7 @@ torch
 selenium
 beautifulsoup4
 requests
+python-dotenv
+flask
+pyautogui
+speech_recognition

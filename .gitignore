@@ -7,7 +7,7 @@ __pycache__/
 samantha_env/
 env/
 venv/
-
+.env/
 # === macOS System Files ===
 .DS_Store
 
