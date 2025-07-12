@@ -1,0 +1,6 @@
+pyttsx3
+transformers
+torch
+selenium
+beautifulsoup4
+requests

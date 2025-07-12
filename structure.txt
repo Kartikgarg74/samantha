@@ -1,0 +1,20 @@
+personal-assistant/
+├── assistant/
+│   ├── __init__.py
+│   ├── browser_control.py
+│   ├── system_automation.py
+│   ├── whatsapp_integration.py
+│   ├── spotify_control.py
+│   ├── web_search.py
+│   ├── intent_classifier.py
+│   └── gui_interface.py
+├── data/
+│   └── interaction_logs.json
+├── tests/
+│   ├── test_browser_control.py
+│   ├── test_system_automation.py
+│   └── test_intent_classifier.py
+├── Dockerfile
+├── requirements.txt
+├── main.py
+├── README.md

@@ -1,0 +1,118 @@
+[
+  {
+    "command": "open brave and search spotify",
+    "response": "I'm not sure what you mean by that."
+  },
+  {
+    "command": "open spotify",
+    "response": "Opening spotify."
+  },
+  {
+    "command": "open brave browser and search for spotify",
+    "response": "Opening brave browser and search for spotify."
+  },
+  {
+    "command": "open brave browser",
+    "response": "Opening brave browser."
+  },
+  {
+    "command": "open brave",
+    "response": "Opening brave."
+  },
+  {
+    "command": "open brave browser",
+    "response": "Opening brave browser."
+  },
+  {
+    "command": "search for spotify in brave browser",
+    "response": "I'm not sure what you mean by this."
+  },
+  {
+    "command": "open app brave browser and search for spotify",
+    "response": "Searching for 'for spotify' on DuckDuckGo."
+  },
+  {
+    "command": "open whatsapp and text \"Deepanshu\" \"hello hello \"",
+    "response": "Opening whatsapp and text \"deepanshu\" \"hello hello \"."
+  },
+  {
+    "command": "OPEN WHATSAPP",
+    "response": "Opening whatsapp."
+  },
+  {
+    "command": "OPEN WHATSAPP AND TEXT DEEPANSHU 100 TIMES HI",
+    "response": "Opening whatsapp and text deepanshu 100 times hi."
+  },
+  {
+    "command": "OPEN WHATSAPP",
+    "response": "Opening whatsapp."
+  },
+  {
+    "command": "scrape https://news.ycombinator.com Hackerscrape https://news.ycombinator.com Hacker",
+    "response": "No relevant info found."
+  },
+  {
+    "command": "scrape https://news.ycombinator.com Hacker",
+    "response": "No relevant info found."
+  },
+  {
+    "command": "SCRAPE SPOTIFY.COM",
+    "response": "Please specify a valid URL for scraping."
+  },
+  {
+    "command": "OPEN APP BRAVE BROWSER AND CLOSE THE YOUTUBE TABS",
+    "response": "Opening app brave browser and close the youtube tabs."
+  },
+  {
+    "command": "close whatsapp",
+    "response": "Closing WhatsApp."
+  },
+  {
+    "command": "open brave and search for spotify and run sajana song on it",
+    "response": "Searching for 'for spotify and run sajana song on it' on DuckDuckGo."
+  },
+  {
+    "command": "open whatsapp",
+    "response": "Opening WhatsApp."
+  },
+  {
+    "command": "open discord",
+    "response": "Opening Discord."
+  },
+  {
+    "command": "open activity monitor",
+    "response": "Opening Activity Monitor."
+  },
+  {
+    "command": "open camera",
+    "response": "Opening Camera."
+  },
+  {
+    "command": "open photo booth",
+    "response": "Opening Photo Booth."
+  },
+  {
+    "command": "open finder",
+    "response": "Searching for 'er' on DuckDuckGo."
+  },
+  {
+    "command": "open brave and open youtube.com and search for the sajana song by aditya rakhhiri",
+    "response": "Browser automation started!"
+  },
+  {
+    "command": "open brave and open youtube.com and search for the sajana song by aditya rakhhiri",
+    "response": "Browser automation started!"
+  },
+  {
+    "command": "open brave",
+    "response": "Browser automation started!"
+  },
+  {
+    "command": "Absolutely, Kartik. Below is a **comprehensive project requirement document** you can present to your development team. It is structured professionally like a **Product Requirements Document (PRD)** or Technical Specification sheet, written from a **Project Manager\u2019s** perspective. It includes all key components \u2014 objectives, system capabilities, integrations, constraints, and tools to be used \u2014 with consideration to your current setup (macOS with Apple Silicon, Brave browser, Microsoft/Dialogp-small, etc.).\n\n---\n\n# \ud83e\udde0 Project Title: AI Personal Assistant for macOS (Apple Silicon)\n\n---\n\n## 1. **Project Overview**\n\nThe goal of this project is to build a lightweight yet intelligent AI Personal Assistant capable of understanding user commands and interacting with the local system and web interfaces on a macOS (Apple Silicon) device. It will automate various day-to-day tasks such as browser control, app management, WhatsApp messaging, call handling, deep web search, media control, and more \u2014 purely through voice/text instructions.\n\n---\n\n## 2. **Core Objectives**\n\n* Enable the AI assistant to execute **system-level automation** (open/close apps, type, click, navigate).\n* Integrate with **Brave Browser** for tab and search automation.\n* Communicate with **WhatsApp Desktop** to send and receive messages and handle calls.\n* Perform **deep contextual web search** when prompted.\n* Control media platforms like **Spotify** through voice commands.\n* Execute all tasks reliably on a **Mac M2 (Apple Silicon)** system using a **lightweight local model** (`Microsoft/Dialogp-small`).\n\n---\n\n## 3. **Key Features & Functional Requirements**\n\n### \ud83d\udd38 A. System Automation (macOS-Specific)\n\n* Launch & close applications (e.g., WhatsApp, Spotify, Brave).\n* Switch between open windows.\n* Simulate mouse clicks and keystrokes (using tools like `pyautogui`, `osascript`, or AppleScript).\n* Read current active window title.\n\n### \ud83d\udd38 B. Brave Browser Control\n\n* Open Brave browser.\n* Open a new tab or close an existing one.\n* Perform a Google search in the current/new tab.\n* Navigate to specific websites.\n* Open/close Incognito (Private) mode.\n* Switch between tabs via command.\n* Scroll, click, and fill input forms based on user command.\n\n### \ud83d\udd38 C. WhatsApp Desktop Integration\n\n* Open WhatsApp Desktop.\n* Select a specific contact.\n* Type and send messages.\n* Receive messages (read new messages if visible).\n* **If technically possible**, accept or reject WhatsApp calls (dependent on accessibility or screen automation).\n\n### \ud83d\udd38 D. Deep Web Search / General Knowledge\n\n* Parse user queries for intent.\n* Perform deep search using DuckDuckGo or Bing search (scrape using `requests + BeautifulSoup` or via browser automation).\n* Summarize retrieved information and respond concisely.\n\n### \ud83d\udd38 E. Spotify Media Control\n\n* Open Spotify Desktop.\n* Search for a given song, playlist, or artist.\n* Play/pause, next/previous track.\n* Volume control via system settings or app hotkeys.\n\n---\n\n## 4. **Non-Functional Requirements**\n\n* Response time must be <1s for local actions and <3s for web search.\n* Model size should be kept under 1 GB due to local system limitations.\n* Assistant must work **offline for local system control**.\n* Modular architecture so new apps/integrations can be added easily.\n\n---\n\n## 5. **Tech Stack & Tooling**\n\n### \u2705 Voice/Text Interface\n\n* Text input via CLI / GUI / Speech Recognition\n* Avoid `pyaudio` \u2014 use `sounddevice` or `SpeechRecognition` with pre-recorded `.wav` if needed\n\n### \u2705 Model\n\n* Use: `microsoft/Dialogp-small` (500MB), running locally for intent parsing\n* Optional fallback: `transformers` for more advanced intent classification (e.g., DistilBERT)\n\n### \u2705 Automation & GUI Control\n\n* `pyautogui`: For mouse & keyboard control\n* `osascript` or `AppleScript`: For system-level actions (launch apps, switch windows)\n* `keyboard`: For key presses (with admin privileges)\n* `subprocess` or `os.system()`: To open or close applications\n* `webbrowser`, `selenium`, or `playwright`: For browser tab and web navigation automation\n\n### \u2705 WhatsApp/Spotify Integration\n\n* `pyautogui` + image recognition for WhatsApp Desktop interaction\n* Spotify Web API (with login) for advanced control \u2014 or Spotify Desktop hotkey automation\n\n---\n\n## 6. **System Architecture**\n\n```plaintext\n+------------------------+\n| User Input (Voice/Text)|\n+-----------+------------+\n            |\n            v\n+------------------------+\n| Intent Classifier (Dialogp-small) |\n+-----------+------------+\n            |\n            v\n+------------------------+\n| Command Parser / Router|\n+-----------+------------+\n            |\n   +--------+--------+--------+--------+\n   |        |        |        |        |\n   v        v        v        v        v\n[macOS]  [Browser] [Apps] [Media] [Search]\nControl  Control   Control Control Web Lookup\n```\n\n---\n\n## 7. **Security & Privacy**\n\n* All actions are local; no cloud-based execution.\n* Sensitive actions (e.g., WhatsApp message sending) can be protected via voice confirmation.\n\n---\n\n## 8. **Constraints & Considerations**\n\n| Constraint                     | Resolution Strategy                           |\n| ------------------------------ | --------------------------------------------- |\n| Model size (max 500MB)         | Use `Dialogp-small` for intent parsing only   |\n| Audio module (`pyaudio` fails) | Use `sounddevice` or pre-recorded audio       |\n| macOS system interaction       | Use AppleScript, `osascript`, and `pyobjc`    |\n| WhatsApp call access limited   | Use GUI automation with visual detection      |\n| Brave browser automation       | Use AppleScript or `selenium` with Brave path |\n\n---\n\n## 9. **Milestone Timeline**\n\n| Milestone                             | Deadline |\n| ------------------------------------- | -------- |\n| Setup environment + model integration | Day 2    |\n| Implement Brave automation            | Day 4    |\n| WhatsApp Desktop message handling     | Day 6    |\n| Spotify automation                    | Day 7    |\n| Web search integration                | Day 8    |\n| Full integration and testing          | Day 10   |\n| Final debugging and optimization      | Day 12   |\n\n---\n\n## 10. **Stretch Goals (Post MVP)**\n\n* Add Whisper or OpenAI STT for more robust voice input.\n* Add memory module (store past instructions & personalize).\n* GUI Assistant with animated avatar.\n* Handle emails (open Apple Mail, read/summarize, send reply).\n\n---\n\n## 11. **Task Distribution Example**\n\n| Task                            | Owner           |\n| ------------------------------- | --------------- |\n| Dialogp-small intent pipeline   | ML Developer    |\n| pyautogui + AppleScript control | Automation Dev  |\n| WhatsApp/Spotify handling       | Integration Dev |\n| Web scraping & summarization    | Web Dev         |\n| GUI Interface (optional)        | Frontend Dev    |\n\n---\n\nLet me know if you\u2019d like a Notion doc, Google Docs export, GitHub README format, or a UI wireframe to support the project. I can also create a Dockerfile and folder structure for your devs.\n\nWould you like code snippets or starter templates for any of these parts (e.g., browser control, WhatsApp automation, model inference, etc.)?",
+    "response": "Browser automation started!"
+  },
+  {
+    "command": "Absolutely, Kartik. Below is a **comprehensive project requirement document** you can present to your development team. It is structured professionally like a **Product Requirements Document (PRD)** or Technical Specification sheet, written from a **Project Manager\u2019s** perspective. It includes all key components \u2014 objectives, system capabilities, integrations, constraints, and tools to be used \u2014 with consideration to your current setup (macOS with Apple Silicon, Brave browser, Microsoft/Dialogp-small, etc.).\n\n---\n\n# \ud83e\udde0 Project Title: AI Personal Assistant for macOS (Apple Silicon)\n\n---\n\n## 1. **Project Overview**\n\nThe goal of this project is to build a lightweight yet intelligent AI Personal Assistant capable of understanding user commands and interacting with the local system and web interfaces on a macOS (Apple Silicon) device. It will automate various day-to-day tasks such as browser control, app management, WhatsApp messaging, call handling, deep web search, media control, and more \u2014 purely through voice/text instructions.\n\n---\n\n## 2. **Core Objectives**\n\n* Enable the AI assistant to execute **system-level automation** (open/close apps, type, click, navigate).\n* Integrate with **Brave Browser** for tab and search automation.\n* Communicate with **WhatsApp Desktop** to send and receive messages and handle calls.\n* Perform **deep contextual web search** when prompted.\n* Control media platforms like **Spotify** through voice commands.\n* Execute all tasks reliably on a **Mac M2 (Apple Silicon)** system using a **lightweight local model** (`Microsoft/Dialogp-small`).\n\n---\n\n## 3. **Key Features & Functional Requirements**\n\n### \ud83d\udd38 A. System Automation (macOS-Specific)\n\n* Launch & close applications (e.g., WhatsApp, Spotify, Brave).\n* Switch between open windows.\n* Simulate mouse clicks and keystrokes (using tools like `pyautogui`, `osascript`, or AppleScript).\n* Read current active window title.\n\n### \ud83d\udd38 B. Brave Browser Control\n\n* Open Brave browser.\n* Open a new tab or close an existing one.\n* Perform a Google search in the current/new tab.\n* Navigate to specific websites.\n* Open/close Incognito (Private) mode.\n* Switch between tabs via command.\n* Scroll, click, and fill input forms based on user command.\n\n### \ud83d\udd38 C. WhatsApp Desktop Integration\n\n* Open WhatsApp Desktop.\n* Select a specific contact.\n* Type and send messages.\n* Receive messages (read new messages if visible).\n* **If technically possible**, accept or reject WhatsApp calls (dependent on accessibility or screen automation).\n\n### \ud83d\udd38 D. Deep Web Search / General Knowledge\n\n* Parse user queries for intent.\n* Perform deep search using DuckDuckGo or Bing search (scrape using `requests + BeautifulSoup` or via browser automation).\n* Summarize retrieved information and respond concisely.\n\n### \ud83d\udd38 E. Spotify Media Control\n\n* Open Spotify Desktop.\n* Search for a given song, playlist, or artist.\n* Play/pause, next/previous track.\n* Volume control via system settings or app hotkeys.\n\n---\n\n## 4. **Non-Functional Requirements**\n\n* Response time must be <1s for local actions and <3s for web search.\n* Model size should be kept under 1 GB due to local system limitations.\n* Assistant must work **offline for local system control**.\n* Modular architecture so new apps/integrations can be added easily.\n\n---\n\n## 5. **Tech Stack & Tooling**\n\n### \u2705 Voice/Text Interface\n\n* Text input via CLI / GUI / Speech Recognition\n* Avoid `pyaudio` \u2014 use `sounddevice` or `SpeechRecognition` with pre-recorded `.wav` if needed\n\n### \u2705 Model\n\n* Use: `microsoft/Dialogp-small` (500MB), running locally for intent parsing\n* Optional fallback: `transformers` for more advanced intent classification (e.g., DistilBERT)\n\n### \u2705 Automation & GUI Control\n\n* `pyautogui`: For mouse & keyboard control\n* `osascript` or `AppleScript`: For system-level actions (launch apps, switch windows)\n* `keyboard`: For key presses (with admin privileges)\n* `subprocess` or `os.system()`: To open or close applications\n* `webbrowser`, `selenium`, or `playwright`: For browser tab and web navigation automation\n\n### \u2705 WhatsApp/Spotify Integration\n\n* `pyautogui` + image recognition for WhatsApp Desktop interaction\n* Spotify Web API (with login) for advanced control \u2014 or Spotify Desktop hotkey automation\n\n---\n\n## 6. **System Architecture**\n\n```plaintext\n+------------------------+\n| User Input (Voice/Text)|\n+-----------+------------+\n            |\n            v\n+------------------------+\n| Intent Classifier (Dialogp-small) |\n+-----------+------------+\n            |\n            v\n+------------------------+\n| Command Parser / Router|\n+-----------+------------+\n            |\n   +--------+--------+--------+--------+\n   |        |        |        |        |\n   v        v        v        v        v\n[macOS]  [Browser] [Apps] [Media] [Search]\nControl  Control   Control Control Web Lookup\n```\n\n---\n\n## 7. **Security & Privacy**\n\n* All actions are local; no cloud-based execution.\n* Sensitive actions (e.g., WhatsApp message sending) can be protected via voice confirmation.\n\n---\n\n## 8. **Constraints & Considerations**\n\n| Constraint                     | Resolution Strategy                           |\n| ------------------------------ | --------------------------------------------- |\n| Model size (max 500MB)         | Use `Dialogp-small` for intent parsing only   |\n| Audio module (`pyaudio` fails) | Use `sounddevice` or pre-recorded audio       |\n| macOS system interaction       | Use AppleScript, `osascript`, and `pyobjc`    |\n| WhatsApp call access limited   | Use GUI automation with visual detection      |\n| Brave browser automation       | Use AppleScript or `selenium` with Brave path |\n\n---\n\n## 9. **Milestone Timeline**\n\n| Milestone                             | Deadline |\n| ------------------------------------- | -------- |\n| Setup environment + model integration | Day 2    |\n| Implement Brave automation            | Day 4    |\n| WhatsApp Desktop message handling     | Day 6    |\n| Spotify automation                    | Day 7    |\n| Web search integration                | Day 8    |\n| Full integration and testing          | Day 10   |\n| Final debugging and optimization      | Day 12   |\n\n---\n\n## 10. **Stretch Goals (Post MVP)**\n\n* Add Whisper or OpenAI STT for more robust voice input.\n* Add memory module (store past instructions & personalize).\n* GUI Assistant with animated avatar.\n* Handle emails (open Apple Mail, read/summarize, send reply).\n\n---\n\n## 11. **Task Distribution Example**\n\n| Task                            | Owner           |\n| ------------------------------- | --------------- |\n| Dialogp-small intent pipeline   | ML Developer    |\n| pyautogui + AppleScript control | Automation Dev  |\n| WhatsApp/Spotify handling       | Integration Dev |\n| Web scraping & summarization    | Web Dev         |\n| GUI Interface (optional)        | Frontend Dev    |\n\n---\n\nLet me know if you\u2019d like a Notion doc, Google Docs export, GitHub README format, or a UI wireframe to support the project. I can also create a Dockerfile and folder structure for your devs.\n\nWould you like code snippets or starter templates for any of these parts (e.g., browser control, WhatsApp automation, model inference, etc.)?\n code for this",
+    "response": "Browser automation started!"
+  }
+]

@@ -1,0 +1,40 @@
+# === Python Bytecode ===
+__pycache__/
+*.py[cod]
+*.so
+
+# === Virtual Environments ===
+samantha_env/
+env/
+venv/
+
+# === macOS System Files ===
+.DS_Store
+
+# === Editor Directories ===
+.vscode/
+.idea/
+
+# === Log / Temp Files ===
+*.log
+*.tmp
+
+# === Environment Variables ===
+.env
+
+# === Test / Coverage Reports ===
+.coverage
+coverage.xml
+htmlcov/
+
+# === PyInstaller / Build Files ===
+build/
+dist/
+*.spec
+
+# === Docker ===
+*.pid
+*.db
+*.sqlite3
+*.dockerfile
+docker-compose.override.yml
