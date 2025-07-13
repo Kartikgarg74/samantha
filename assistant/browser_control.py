@@ -2,7 +2,61 @@ import webbrowser
 import time
 import re
 from urllib.parse import quote_plus
+"""
+Browser control module with integrated system prompts.
 
+This is a partial update showing only the integration of system prompts.
+"""
+
+# Existing imports...
+from assistant.system_prompts import prompt_manager
+
+class BrowserControl:
+    def __init__(self):
+        # Existing initialization code...
+        self.system_prompt = prompt_manager.get_prompt("browser.general")
+
+    def get_contextual_prompt(self, task_type=None):
+        """
+        Get a context-specific system prompt for browser tasks.
+
+        Args:
+            task_type: Specific browser task type (e.g., 'search', 'extract', 'navigate')
+
+        Returns:
+            Appropriate system prompt for the task
+        """
+        if task_type and f"browser.{task_type}" in prompt_manager.list_contexts():
+            return prompt_manager.get_prompt(f"browser.{task_type}")
+
+        # Fall back to general browser prompt
+        return self.system_prompt
+
+    # When interacting with LLM for browser-specific tasks
+    def get_ai_response_for_browser_task(self, user_query, task_type=None, **kwargs):
+        """
+        Get AI response with the appropriate system prompt for a browser task.
+
+        Args:
+            user_query: User's request
+            task_type: Type of browser task
+            kwargs: Additional parameters for the LLM
+
+        Returns:
+            AI response using the appropriate system prompt
+        """
+        system_prompt = self.get_contextual_prompt(task_type)
+
+        # Call LLM with the system prompt (implementation depends on your LLM interface)
+        response = self.llm.get_response(
+            system_prompt=system_prompt,
+            user_query=user_query,
+            **kwargs
+        )
+
+        return response
+
+    # Rest of the browser control implementation...
 def browser_action(command: str) -> str:
     """
     Enhanced browser control function that can handle complex commands

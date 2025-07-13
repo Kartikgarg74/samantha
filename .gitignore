@@ -21,7 +21,8 @@ venv/
 
 # === Environment Variables ===
 .env
-
+conversation_history.json
+samantha_local_data.json
 # === Test / Coverage Reports ===
 .coverage
 coverage.xml

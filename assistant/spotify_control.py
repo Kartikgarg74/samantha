@@ -9,21 +9,65 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from spotify_controller import SpotifyController
 from spotify_auth import SpotifyAuth
 
-class SpotifyControl:
-    """
-    High-level Spotify control interface for voice commands and natural language processing.
-    This class provides easy-to-use methods for controlling Spotify through voice commands.
-    """
+"""
+Spotify control module with integrated system prompts.
 
+This is a partial update showing only the integration of system prompts.
+"""
+
+# Existing imports...
+from assistant.system_prompts import prompt_manager
+
+class SpotifyControl:
     def __init__(self):
-        """Initialize Spotify controller with authentication."""
-        try:
-            self.spotify = SpotifyController()
-            self.current_playlist_id = None
-            print("✅ Spotify controller initialized successfully!")
-        except Exception as e:
-            print(f"❌ Failed to initialize Spotify: {e}")
-            self.spotify = None
+        # Existing initialization code...
+        self.system_prompt = prompt_manager.get_prompt("spotify.general")
+
+    def get_contextual_prompt(self, task_type=None, user_preferences=None):
+        """
+        Get a context-specific system prompt for Spotify tasks.
+
+        Args:
+            task_type: Specific Spotify task type (e.g., 'search', 'recommend', 'playback')
+            user_preferences: User's music preferences to incorporate
+
+        Returns:
+            Appropriate system prompt for the task
+        """
+        params = {}
+        if user_preferences:
+            params["user_preferences"] = user_preferences
+
+        if task_type and f"spotify.{task_type}" in prompt_manager.list_contexts():
+            return prompt_manager.get_prompt(f"spotify.{task_type}", params)
+
+        # Fall back to general Spotify prompt
+        return self.system_prompt
+
+    # When interacting with LLM for Spotify-specific tasks
+    def get_music_recommendations(self, user_query, user_preferences=None):
+        """
+        Get music recommendations using context-specific prompts.
+
+        Args:
+            user_query: User's request
+            user_preferences: User's music preferences
+
+        Returns:
+            AI-generated music recommendations
+        """
+        system_prompt = self.get_contextual_prompt(
+            task_type="recommend",
+            user_preferences=user_preferences
+        )
+
+        # Call LLM with the system prompt
+        recommendations = self.llm.get_response(
+            system_prompt=system_prompt,
+            user_query=user_query
+        )
+
+        return recommendations
 
     def is_connected(self) -> bool:
         """Check if Spotify is connected and ready."""

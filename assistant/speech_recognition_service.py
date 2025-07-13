@@ -1,217 +1,272 @@
 """
-Speech recognition implementation for Samantha Voice Assistant using Faster-Whisper.
-Optimized for macOS with CPU inference.
+Speech recognition service with configurable VAD settings.
 """
-
-import os
-import time
-import threading
-from datetime import datetime
+import sounddevice as sd
+import io
+import wave
 import tempfile
-import subprocess
+import time
+import logging
+from typing import Optional, Callable
 import numpy as np
+import threading
+import torch
 
-# Install required packages if not present
-try:
-    from faster_whisper import WhisperModel
-except ImportError:
-    print("Installing faster-whisper...")
-    subprocess.check_call(["pip", "install", "faster-whisper"])
-    from faster_whisper import WhisperModel
+# Import the config manager
+from assistant.config_manager import ConfigManager, config_manager
 
-try:
-    import sounddevice as sd
-    import soundfile as sf
-except ImportError:
-    print("Installing audio dependencies...")
-    subprocess.check_call(["pip", "install", "sounddevice", "soundfile"])
-    import sounddevice as sd
-    import soundfile as sf
+logger = logging.getLogger("SpeechRecognizer")
 
 class SpeechRecognizer:
-    def __init__(self, model_size="tiny", device="cpu", compute_type="int8", sample_rate=16000):
+    """Speech recognizer with configurable VAD settings."""
+
+    def __init__(self, model_size: str = None, device: str = None, vad_threshold: float = None, vad_sensitivity: float = None):
         """
-        Initialize speech recognition with Faster-Whisper
+        Initialize the speech recognizer.
 
         Args:
-            model_size (str): Size of Whisper model ('tiny', 'base', 'small', 'medium', 'large')
-            device (str): Device to use ('cpu', 'cuda', or 'mps' for Mac)
-            compute_type (str): Compute type ('float16', 'int8', 'int8_float16')
-            sample_rate (int): Audio sample rate in Hz
+            model_size: Size of the model to use (tiny, base, small, medium, large)
+            device: Device to use for inference (cpu, cuda, mps)
+            vad_threshold: Voice activity detection threshold
+            vad_sensitivity: Voice activity detection sensitivity
         """
-        # Force CPU usage regardless of what's requested to avoid MPS issues
-        if device != "cuda":  # Only keep cuda if explicitly requested
-            device = "cpu"
-            print("Using CPU for model inference (safer option)")
+        # Get config values, with function parameters taking precedence
 
-        print(f"Loading Faster-Whisper {model_size} model on {device}...")
-        self.model = WhisperModel(model_size, device=device, compute_type=compute_type)
-        print("Model loaded successfully!")
 
-        self.sample_rate = sample_rate
-        self.is_listening = False
-        self.stream = None
-        self.listen_thread = None
-        self.callback = None
-        self.audio_data = None
-        self.audio_timeout = 5  # Default timeout in seconds
-        self.result_text = None
+        cfg = config_manager.get_section('speech_recognition')
+        self.model_size = model_size or cfg.get('model_size', 'tiny')
+        self.device = device or cfg.get('device', 'cpu')
+        cfg_manager = ConfigManager()
+        vad_cfg = cfg.get('vad', {})
+        self.vad_enabled = vad_cfg.get("enabled", True)
+        self.vad_threshold = vad_threshold or vad_cfg.get('threshold', 0.5)
+        self.vad_sensitivity = vad_sensitivity or vad_cfg.get('sensitivity', 0.75)
+        self.min_speech_duration_ms = vad_cfg.get('min_speech_duration_ms', 250)
+        self.max_speech_duration_s = vad_cfg.get('max_speech_duration_s', 15)
+        self.silence_duration_ms = vad_cfg.get('silence_duration_ms', 500)
+        # Add these lines to your SpeechRecognizer __init__ method
+        print("VAD config:", vad_cfg)
+        print("VAD enabled setting:", vad_cfg.get('enabled', True))
 
-    def start_listening(self, callback=None, timeout=5):
-        """
-        Start listening for speech in a background thread
+        # Initialize the model
+        self._initialize_model()
 
-        Args:
-            callback (function): Function to call with recognized text
-            timeout (int): Maximum time to wait for speech in seconds
-        """
-        if self.is_listening:
-            return False
+        # State variables
+        self.listening = False
+        self.continuous_thread = None
 
-        self.is_listening = True
-        self.callback = callback
-        self.audio_timeout = timeout
-        self.audio_data = np.array([], dtype=np.float32)
-
-        # Start listening in a separate thread
-        self.listen_thread = threading.Thread(target=self._listen_loop)
-        self.listen_thread.daemon = True
-        self.listen_thread.start()
-
-        return True
-
-    def stop_listening(self):
-        """Stop the listening process"""
-        if not self.is_listening:
-            return False
-
-        self.is_listening = False
-        if self.stream:
-            self.stream.close()
-            self.stream = None
-
-        if self.listen_thread and self.listen_thread.is_alive():
-            self.listen_thread.join(timeout=1.0)
-
-        return True
-
-    def _audio_callback(self, indata, frames, time_info, status):
-        """Callback for sounddevice to collect audio data"""
-        if status:
-            print(f"Audio callback status: {status}")
-
-        if not self.is_listening:
-            return
-
-        # Append to our audio data (converting to float32 and normalizing)
-        self.audio_data = np.append(self.audio_data, indata.flatten())
-
-    def _listen_loop(self):
-        """Background thread for continuous listening"""
+    def _initialize_model(self):
+        """Initialize the speech recognition model."""
         try:
-            # Set up audio stream
-            self.stream = sd.InputStream(
-                samplerate=self.sample_rate,
-                channels=1,
-                dtype='float32',
-                callback=self._audio_callback
-            )
+            # This is just a placeholder. In practice, you would load your
+            # speech recognition model here (e.g., Faster Whisper)
+            logger.info(f"Initializing speech recognition model (size={self.model_size}, device={self.device})")
 
-            self.stream.start()
-
-            # Wait for the specified timeout
-            start_time = time.time()
-            while self.is_listening and time.time() - start_time < self.audio_timeout:
-                time.sleep(0.1)
-
-            # Stop streaming
-            self.stream.stop()
-            self.stream.close()
-            self.stream = None
-
-            if len(self.audio_data) > 0:
-                # Save audio to a temporary file
-                with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as temp_file:
-                    temp_filename = temp_file.name
-                    sf.write(temp_filename, self.audio_data, self.sample_rate)
-
+            # Example: load Faster Whisper model
+            try:
+                from faster_whisper import WhisperModel
+                self.model = WhisperModel(self.model_size, device=self.device)
+                logger.info("Using Faster Whisper model for speech recognition")
+            except ImportError:
+                logger.warning("Faster Whisper not available, trying to use regular Whisper")
                 try:
-                    # Transcribe the audio
-                    segments, _ = self.model.transcribe(temp_filename, language="en", beam_size=1)
-                    text = " ".join([segment.text for segment in segments]).strip()
+                    import whisper
+                    self.model = whisper.load_model(self.model_size, device=self.device)
+                    logger.info("Using OpenAI Whisper model for speech recognition")
+                except ImportError:
+                    logger.error("No speech recognition model available")
+                    self.model = None
 
-                    # Call the callback with the recognized text
-                    if text and self.callback:
-                        self.callback(text)
-                    elif text:
-                        self.result_text = text
-                finally:
-                    # Clean up the temporary file
-                    os.unlink(temp_filename)
+            # Initialize VAD if enabled
+            if self.vad_enabled:
+                try:
+                    import torch
+                    from speechbrain.pretrained import VAD
+                    self.vad_model = VAD.from_hparams(source="speechbrain/vad-crdnn-libriparty")
+                    logger.info("VAD model loaded successfully")
+                except Exception as e:
+                    logger.warning(f"Could not initialize VAD model: {e}")
+                    self.vad_enabled = False
+
+            logger.info("Speech recognition model initialized successfully")
 
         except Exception as e:
-            print(f"Error in listening thread: {e}")
-            import traceback
-            traceback.print_exc()
-        finally:
-            self.is_listening = False
+            logger.error(f"Error initializing speech recognition model: {e}")
+            # Fall back to smallest model on CPU if there's an error
+            self.model_size = "tiny"
+            self.device = "cpu"
 
-    def listen(self, timeout=5):
+            # Try again with fallback settings
+            try:
+                from faster_whisper import WhisperModel
+                self.model = WhisperModel(self.model_size, device=self.device)
+                logger.info("Using fallback Faster Whisper model")
+            except Exception as e2:
+                logger.error(f"Failed to initialize fallback model: {e2}")
+                raise RuntimeError("Could not initialize speech recognition")
+
+    def listen(self, timeout: int = 5) -> str:
         """
-        Listen for speech input and convert to text (blocking mode)
+        Listen for speech and convert to text.
 
         Args:
-            timeout (int): Maximum time to wait for speech in seconds
+            timeout: Maximum time to listen for in seconds
 
         Returns:
-            str: Recognized text or empty string if nothing recognized
+            Transcribed text
         """
-        self.result_text = None
+        try:
+            logger.debug(f"Listening for {timeout}s with VAD (threshold={self.vad_threshold}, sensitivity={self.vad_sensitivity})")
 
-        def callback(text):
-            self.result_text = text
+            # Sample rate and other parameters
+            samplerate = 16000
+            channels = 1
 
-        print("🎤 Listening... (speak now)")
-        self.start_listening(callback=callback, timeout=timeout)
+            # Record audio
+            logger.debug(f"Recording audio for up to {timeout} seconds")
+            audio_data = sd.rec(
+                int(samplerate * timeout),
+                samplerate=samplerate,
+                channels=channels,
+                dtype='int16'
+            )
 
-        # Wait until listening is done
-        while self.is_listening:
-            time.sleep(0.1)
+            # Wait for recording to finish or for speech to be detected
+            start_time = time.time()
+            speech_detected = False
+            silence_counter = 0
 
-        # Wait a little longer for processing to finish
-        for _ in range(10):  # Wait up to 1 second for processing
-            if self.result_text is not None:
-                break
-            time.sleep(0.1)
+            while time.time() - start_time < timeout:
+                sd.wait()
 
-        result = self.result_text or ""
-        self.result_text = None
-        return result
+                # If VAD is enabled, check if speech is present
+                if self.vad_enabled and hasattr(self, 'vad_model'):
+                    # Process the audio chunk
+                    # This is simplified - in a real implementation,
+                    # you'd process the audio in chunks during recording
+                    try:
+                        speech_prob = self.vad_model.get_speech_prob(torch.from_numpy(audio_data[:int((time.time() - start_time) * samplerate)].flatten()))
+                        is_speech = speech_prob.mean() > self.vad_threshold
 
-    def continuous_listen(self, callback, timeout=None):
-        """
-        Start continuous listening with callback for each recognized phrase
+                        if is_speech:
+                            speech_detected = True
+                            silence_counter = 0
+                        else:
+                            silence_counter += 1
 
-        Args:
-            callback (function): Function to call with each recognized text
-            timeout (int, optional): Stop listening after this many seconds
-        """
-        self.start_listening(callback=callback, timeout=timeout)
+                        # If we've detected speech and then silence, stop recording
+                        if speech_detected and silence_counter > int(self.silence_duration_ms * samplerate / 1000):
+                            logger.debug("Speech followed by silence detected, stopping recording")
+                            break
 
-    def transcribe_file(self, file_path):
-        """
-        Transcribe audio from a file
+                    except Exception as e:
+                        logger.warning(f"Error in VAD processing: {e}")
 
-        Args:
-            file_path (str): Path to audio file
+                # Small sleep to reduce CPU usage
+                time.sleep(0.1)
 
-        Returns:
-            str: Transcribed text
-        """
-        if not os.path.exists(file_path):
-            print(f"File not found: {file_path}")
+            # If no speech detected or VAD not enabled, just use the full recording
+            if not speech_detected and not self.vad_enabled:
+                logger.debug("No VAD used or no speech detected, using full recording")
+
+            # Save audio to temporary file
+            with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as temp_audio:
+                audio_file = temp_audio.name
+                with wave.open(audio_file, 'wb') as wf:
+                    wf.setnchannels(channels)
+                    wf.setsampwidth(2)  # 16-bit
+                    wf.setframerate(samplerate)
+                    wf.writeframes(audio_data.tobytes())
+
+            # Transcribe the audio
+            if hasattr(self, 'model') and self.model:
+                if hasattr(self.model, 'transcribe'):  # OpenAI Whisper
+                    result = self.model.transcribe(audio_file)
+                    text = result["text"].strip()
+                else:  # Faster Whisper
+                    segments, _ = self.model.transcribe(audio_file)
+                    text = " ".join([segment.text for segment in segments]).strip()
+
+                logger.info(f"Transcribed: '{text}'")
+                return text
+            else:
+                logger.warning("No model available for transcription")
+                return ""
+
+        except Exception as e:
+            logger.error(f"Error in speech recognition: {e}")
             return ""
+        finally:
+            # Clean up any temporary files
+            try:
+                import os
+                if 'audio_file' in locals() and os.path.exists(audio_file):
+                    os.unlink(audio_file)
+            except:
+                pass
 
-        segments, _ = self.model.transcribe(file_path, language="en", beam_size=5)
-        text = " ".join([segment.text for segment in segments])
-        return text
+    def continuous_listen(self, callback: Callable[[str], None]) -> None:
+        """
+        Start continuous listening mode.
+
+        Args:
+            callback: Function to call with transcribed text
+        """
+        if self.continuous_thread and self.continuous_thread.is_alive():
+            logger.warning("Continuous listening already active")
+            return
+
+        self.listening = True
+
+        def listen_thread():
+            logger.info("Starting continuous listening thread")
+            while self.listening:
+                text = self.listen(timeout=2)  # Shorter timeout for responsiveness
+                if text and callable(callback):
+                    callback(text)
+
+        self.continuous_thread = threading.Thread(target=listen_thread)
+        self.continuous_thread.daemon = True
+        self.continuous_thread.start()
+
+    def stop_listening(self) -> None:
+        """Stop listening."""
+        logger.info("Stopping listening")
+        self.listening = False
+        if self.continuous_thread:
+            if self.continuous_thread.is_alive():
+                # Give the thread time to finish
+                self.continuous_thread.join(timeout=1)
+            self.continuous_thread = None
+
+    def update_vad_settings(self, threshold: Optional[float] = None, sensitivity: Optional[float] = None) -> None:
+        """
+        Update VAD settings.
+
+        Args:
+            threshold: New threshold value (0-1)
+            sensitivity: New sensitivity value (0-1)
+        """
+        if threshold is not None:
+            self.vad_threshold = max(0.0, min(1.0, threshold))
+            logger.debug(f"VAD threshold updated to {self.vad_threshold}")
+
+        if sensitivity is not None:
+            self.vad_sensitivity = max(0.0, min(1.0, sensitivity))
+            logger.debug(f"VAD sensitivity updated to {self.vad_sensitivity}")
+
+    def get_vad_settings(self) -> dict:
+        """
+        Get current VAD settings.
+
+        Returns:
+            Dictionary with current VAD settings
+        """
+        return {
+            "enabled": self.vad_enabled,
+            "threshold": self.vad_threshold,
+            "sensitivity": self.vad_sensitivity,
+            "min_speech_duration_ms": self.min_speech_duration_ms,
+            "max_speech_duration_s": self.max_speech_duration_s,
+            "silence_duration_ms": self.silence_duration_ms
+        }

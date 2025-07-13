@@ -6,120 +6,122 @@ Determines the intent of user commands to route them to appropriate handlers.
 import re
 from typing import Dict, List
 
+import os
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
 class IntentClassifier:
-    def __init__(self):
-        """Initialize the intent classifier with keyword patterns"""
-        self.intent_patterns = {
-            "spotify": {
-                "keywords": [
-                    "play", "pause", "stop music", "next", "previous", "skip", "back",
-                    "volume", "louder", "quieter", "music", "song", "track", "album",
-                    "playlist", "spotify", "like song", "unlike", "current song",
-                    "what's playing", "now playing", "search music", "add to playlist",
-                    "remove from playlist", "liked songs", "my music", "resume"
-                ],
-                "phrases": [
-                    "play music", "pause music", "next song", "previous song",
-                    "volume up", "volume down", "like this song", "unlike this song",
-                    "what song is this", "add to playlist", "create playlist",
-                    "search for", "play spotify"
-                ]
-            },
+    """Advanced intent classification using DialoGPT with improved prompting"""
 
-            "browser": {
-                "keywords": [
-                    "open", "browse", "website", "search", "google", "youtube",
-                    "facebook", "twitter", "instagram", "reddit", "github",
-                    "close tab", "new tab", "refresh", "back", "forward",
-                    "bookmark", "history", "download"
-                ],
-                "phrases": [
-                    "open website", "go to", "search for", "browse to",
-                    "open google", "search google", "youtube search",
-                    "close browser", "new window", "incognito mode"
-                ]
-            },
+    def __init__(self, model_name="microsoft/DialoGPT-small"):
+        print(f"Loading intent classifier model: {model_name}")
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self.model = AutoModelForCausalLM.from_pretrained(model_name)
 
-            "whatsapp": {
-                "keywords": [
-                    "whatsapp", "message", "text", "call", "video call",
-                    "send", "share", "file", "contact", "chat", "voice message"
-                ],
-                "phrases": [
-                    "send message", "whatsapp message", "call someone",
-                    "video call", "share file", "open whatsapp", "close whatsapp",
-                    "message to", "send to", "call mom", "call dad"
-                ]
-            },
-
-            "greeting": {
-                "keywords": [
-                    "hello", "hi", "hey", "good morning", "good afternoon",
-                    "good evening", "how are you", "what's up", "greetings"
-                ],
-                "phrases": [
-                    "hello samantha", "hi there", "good morning samantha",
-                    "how are you doing", "what's up"
-                ]
-            },
-
-            "goodbye": {
-                "keywords": [
-                    "goodbye", "bye", "see you", "farewell", "exit", "quit",
-                    "stop", "turn off", "shutdown"
-                ],
-                "phrases": [
-                    "goodbye samantha", "see you later", "bye bye",
-                    "turn off", "shut down", "stop listening permanently"
-                ]
-            },
-
-            "assistant_control": {
-                "keywords": [
-                    "help", "what can you do", "capabilities", "commands",
-                    "stop listening", "wake up", "volume", "speak louder",
-                    "speak quieter", "settings", "configure"
-                ],
-                "phrases": [
-                    "what can you do", "show me commands", "help me",
-                    "stop listening", "speak louder", "speak quieter",
-                    "assistant volume", "samantha settings"
-                ]
-            },
-
-            "time_date": {
-                "keywords": [
-                    "time", "date", "today", "now", "current time",
-                    "what time", "what date", "clock", "calendar"
-                ],
-                "phrases": [
-                    "what time is it", "what's the time", "what date is it",
-                    "what's today's date", "current time", "tell me the time"
-                ]
-            },
-
-            "weather": {
-                "keywords": [
-                    "weather", "temperature", "forecast", "rain", "sunny",
-                    "cloudy", "hot", "cold", "humidity", "wind"
-                ],
-                "phrases": [
-                    "what's the weather", "weather forecast", "is it raining",
-                    "temperature today", "how's the weather"
-                ]
-            },
-
-            "general": {
-                "keywords": [
-                    "what", "how", "why", "when", "where", "who", "tell me",
-                    "explain", "define", "calculate", "convert"
-                ],
-                "phrases": [
-                    "tell me about", "what is", "how do", "explain this",
-                    "calculate this", "convert this"
-                ]
-            }
+        # Intent categories
+        self.intents = {
+            "browser": ["open website", "search for", "browse", "google", "brave", "firefox", "chrome", "safari", "internet"],
+            "spotify": ["play music", "pause music", "next song", "previous song", "volume", "spotify"],
+            "whatsapp": ["send message", "text", "whatsapp", "call"],
+            "system": ["shutdown", "restart", "sleep", "volume", "brightness"],
+            "timer": ["set timer", "set alarm", "remind me"],
+            "weather": ["weather", "temperature", "forecast"],
+            "general": ["who are you", "your name", "tell me", "what is", "how to"]
         }
+
+        # Load system prompt for better intent understanding
+        self.system_prompt = self._load_system_prompt()
+
+    def _load_system_prompt(self):
+        """Load a system prompt to guide intent classification"""
+        # This could be expanded to load from your leaked prompts collection
+        return """
+        You are an intent classification system. Your job is to accurately determine what the user wants to do
+        based on their message. Analyze the entire meaning of the request, not just keywords.
+
+        For multi-step intentions, identify the primary intent and any secondary actions.
+        """
+
+    def classify_with_context(self, text, conversation_context=None):
+        """Classify intent using the LLM with conversation context"""
+
+        # Create prompt with context and current request
+        context_text = ""
+        if conversation_context:
+            for msg in conversation_context:
+                role = msg['role']
+                content = msg['content']
+                context_text += f"{role}: {content}\n"
+
+        # Build the complete prompt
+        prompt = f"{self.system_prompt}\n\nConversation History:\n{context_text}\n\nUser: {text}\n\nIntent:"
+
+        # Prepare input for the model
+        inputs = self.tokenizer.encode(prompt, return_tensors="pt")
+
+        # Generate response
+        outputs = self.model.generate(
+            inputs,
+            max_length=150,
+            num_return_sequences=1,
+            pad_token_id=self.tokenizer.eos_token_id,
+            do_sample=True,
+            temperature=0.7
+        )
+
+        response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+
+        # Extract the model's classification
+        intent_prediction = response.split("Intent:")[-1].strip()
+
+        # Map to our intent categories using a more sophisticated approach
+        detected_intent = self._map_to_intent_category(text, intent_prediction)
+        confidence = self._calculate_confidence(text, detected_intent)
+
+        return {
+            "intent": detected_intent,
+            "confidence": confidence,
+            "original_text": text,
+            "model_prediction": intent_prediction
+        }
+
+    def _map_to_intent_category(self, text, prediction):
+        """Map the model prediction to one of our intent categories"""
+        text = text.lower()
+
+        # First check for direct intent matches in the prediction
+        for intent, keywords in self.intents.items():
+            for keyword in keywords:
+                if keyword.lower() in prediction.lower():
+                    return intent
+
+        # Fall back to checking the original text
+        matches = {}
+        for intent, keywords in self.intents.items():
+            matches[intent] = sum(1 for keyword in keywords if keyword.lower() in text)
+
+        # Find the intent with most matches
+        if any(matches.values()):
+            return max(matches, key=matches.get)
+
+        # Default to general if no matches
+        return "general"
+
+    def _calculate_confidence(self, text, detected_intent):
+        """Calculate a confidence score for the detected intent"""
+        text = text.lower()
+        keyword_count = 0
+        total_keywords = 0
+
+        for intent, keywords in self.intents.items():
+            for keyword in keywords:
+                total_keywords += 1
+                if keyword.lower() in text:
+                    keyword_count += 2 if intent == detected_intent else 1
+
+        # Basic confidence calculation
+        confidence = min(0.5 + (keyword_count / total_keywords), 0.95)
+        return confidence
 
     def classify(self, text: str) -> str:
         """

@@ -1,0 +1,50 @@
+from setuptools import setup, find_packages
+
+setup(
+    name="samantha",
+    version="0.1.0",
+    packages=find_packages(),
+    install_requires=[
+        # Core dependencies
+        "transformers>=4.34.0",
+        "torch>=2.0.0",
+        "flask>=2.0.1",
+        "pyautogui>=0.9.54",
+        "python-dotenv>=0.19.2",
+        "pyttsx3>=2.90",
+        "requests>=2.26.0",
+        "numpy>=1.26.0",
+
+        # Audio processing
+        "SpeechRecognition>=3.8.1",
+        "sounddevice>=0.4.6",
+        "soundfile>=0.12.1",
+        "faster-whisper>=0.9.0",
+        "whisper>=1.1.10",
+        "speechbrain>=1.0.3",
+
+        # Web automation
+        "beautifulsoup4>=4.10.0",
+        "selenium>=4.1.0",
+        "webdriver-manager>=3.5.2",
+
+        # Machine learning
+        "scikit-learn>=1.7.0",
+
+        # OS-specific dependencies
+        "pyobjc>=9.0.1; platform_system == 'Darwin'",  # macOS
+        "pywin32>=303; platform_system == 'Windows'",  # Windows
+        "python-xlib>=0.31; platform_system == 'Linux'",  # Linux
+
+        # Testing dependencies
+        "pytest>=7.4.0",
+        "pytest-cov>=4.1.0",
+        "mock>=5.0.0",
+
+        # Development tools
+        "black>=23.9.1",
+        "flake8>=6.1.0",
+        "isort>=5.12.0",
+        "mypy>=1.5.1"
+    ],
+)

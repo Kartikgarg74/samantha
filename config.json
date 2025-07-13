@@ -1,0 +1,112 @@
+{
+  "assistant": {
+    "name": "Samantha",
+    "version": "1.0.0",
+    "wake_words": ["samantha", "hey samantha", "hello samantha"],
+    "language": "en-US",
+    "voice_id": "female",
+    "startup_message": "Hello! I'm Samantha, your AI assistant."
+  },
+  "speech_recognition": {
+    "model_size": "tiny",
+    "device": "auto",
+    "language": "en-US",
+    "vad": {
+      "enabled": true,
+      "threshold": 0.5,
+      "min_speech_duration_ms": 250,
+      "max_speech_duration_s": 15,
+      "silence_duration_ms": 500,
+      "sensitivity": 0.75
+    },
+    "timeout": {
+      "default": 5,
+      "wake_word": 2,
+      "command": 10
+    }
+  },
+  "tts": {
+    "engine": "system",
+    "rate": 180,
+    "volume": 0.8,
+    "voice": {
+      "gender": "female",
+      "preferred_names": ["zira", "susan", "samantha"]
+    }
+  },
+  "memory": {
+    "max_conversations": 100,
+    "max_conversation_length": 20,
+    "persist_user_preferences": true,
+    "context_retention_period_days": 7,
+    "forget_older_than_days": 30,
+    "file_path": "assistant_memory.json"
+  },
+  "models": {
+    "intent_classifier": {
+      "model_path": "models/intent_classifier",
+      "device": "auto",
+      "threshold": 0.6
+    },
+    "embeddings": {
+      "model_path": "models/embeddings",
+      "dimension": 384,
+      "device": "auto"
+    }
+  },
+  "system_prompts": {
+    "directory": "assistant/prompts"
+  },
+  "apis": {
+    "weather": {
+      "provider": "openweathermap",
+      "api_key": "",
+      "units": "metric"
+    },
+    "news": {
+      "provider": "newsapi",
+      "api_key": "",
+      "default_sources": ["bbc-news", "cnn"]
+    }
+  },
+  "spotify": {
+    "client_id": "",
+    "client_secret": "",
+    "redirect_uri": "http://localhost:8888/callback",
+    "scopes": [
+      "user-read-playback-state",
+      "user-modify-playback-state",
+      "user-read-currently-playing",
+      "playlist-read-private",
+      "playlist-read-collaborative"
+    ]
+  },
+  "browser": {
+    "default_browser": "chrome",
+    "headless": false,
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+  },
+  "logging": {
+    "level": "INFO",
+    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    "file_path": "assistant.log",
+    "max_size_mb": 10,
+    "backup_count": 5,
+    "console_output": true
+  },
+  "security": {
+    "encrypt_user_data": true,
+    "allowed_domains": ["*"],
+    "require_confirmation_for": [
+      "system_settings",
+      "delete_data",
+      "send_messages",
+      "browser_purchases"
+    ]
+  },
+  "development": {
+    "debug_mode": false,
+    "profile_performance": false,
+    "test_mode": false
+  }
+}
