@@ -13,7 +13,7 @@ import time
 import threading
 import queue
 from typing import Dict, Optional, List, Any, Union, Callable
-
+from assistant.StatusIndicator import StatusIndicator
 # Optional imports for various speech recognition engines
 try:
     import speech_recognition as sr
@@ -195,18 +195,13 @@ class SpeechRecognitionService:
 
         return result
 
-    def _listen(self) -> Optional[sr.AudioData]:
-        """
-        Listen for speech input from the microphone.
-
-        Returns:
-            AudioData object or None if failed
-        """
-        if not SR_AVAILABLE:
-            logger.error("speech_recognition library not available")
-            return None
-
+    def _listen(self, timeout: Optional[int] = None):
+        if timeout is None:
+            timeout = config_manager.get('speech_recognition.timeout.default', 5)
         try:
+            listening_thread = threading.Thread(target=StatusIndicator.show_listening, args=(timeout,))
+            listening_thread.daemon = True
+            listening_thread.start()
             # Initialize microphone if needed
             if self._microphone is None:
                 self._microphone = sr.Microphone()
@@ -216,12 +211,20 @@ class SpeechRecognitionService:
                 self._recognizer.adjust_for_ambient_noise(source, duration=1)
 
                 logger.debug("Listening for speech")
-                audio = self._recognizer.listen(
-                    source,
-                    timeout=self.timeout,
-                    phrase_time_limit=self.phrase_time_limit
-                )
+                timeout = self.timeout
+                if isinstance(timeout, dict):
+                    logger.warning("Timeout was a dictionary, using default 5 seconds instead")
+                    timeout = 5
+                phrase_time_limit = self.phrase_time_limit
+                if isinstance(phrase_time_limit, dict):
+                    logger.warning("Phrase time limit was a dictionary, using None instead")
+                    phrase_time_limit = None
+                audio = self._recognizer.listen()
                 return audio
+            if audio is None:
+                result = self.recognizer.recognize_speech(audio_data)
+                text = result["text"] if result["success"] else ""
+            else:""
 
         except sr.WaitTimeoutError:
             logger.warning("Listening timed out waiting for phrase to start")

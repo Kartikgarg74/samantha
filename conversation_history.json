@@ -1,22 +1,32 @@
 [
-    {
-        "speaker": "assistant",
-        "text": "Hello! I'm Samantha, your voice assistant. Say 'Hey Samantha' to wake me up.",
-        "time": "2025-07-12 23:05:50"
-    },
-    {
-        "speaker": "user",
-        "text": "the music",
-        "time": "2025-07-12 23:06:06"
-    },
-    {
-        "speaker": "user",
-        "text": "me the",
-        "time": "2025-07-12 23:06:16"
-    },
-    {
-        "speaker": "user",
-        "text": "i don't think we're going on a...",
-        "time": "2025-07-12 23:06:18"
-    }
+  {
+    "speaker": "assistant",
+    "text": "Hello! I'm Samantha, your voice assistant. Say 'Hey Samantha' to wake me up.",
+    "time": "2025-07-12 23:05:50"
+  },
+  {
+    "speaker": "user",
+    "text": "the music",
+    "time": "2025-07-12 23:06:06"
+  },
+  {
+    "speaker": "user",
+    "text": "me the",
+    "time": "2025-07-12 23:06:16"
+  },
+  {
+    "speaker": "user",
+    "text": "i don't think we're going on a...",
+    "time": "2025-07-12 23:06:18"
+  },
+  {
+    "speaker": "assistant",
+    "text": "Hello! I'm Samantha, your AI assistant.",
+    "time": "2025-07-13 19:07:11"
+  },
+  {
+    "speaker": "assistant",
+    "text": "Hello! I'm Samantha, your AI assistant.",
+    "time": "2025-07-13 19:18:23"
+  }
 ]

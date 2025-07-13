@@ -71,7 +71,31 @@ class CommandProcessor:
             "Timer": self._handle_timer_command,
             "General": self._handle_general_command
         }
+    def cleanup(self):
+        """Clean up resources before exit with user feedback"""
+        print("\n" + "=" * 50)
+        print("🧹 Cleaning up resources...")
 
+        try:
+            # Save session data
+            print("📊 Saving session data...")
+            self.session_manager.save()
+
+            # Stop speech recognition
+            if hasattr(self, 'recognizer') and hasattr(self.recognizer, 'stop_continuous_listening'):
+                print("🎤 Stopping speech recognition...")
+                self.recognizer.stop_continuous_listening()
+
+            # Save conversation history
+            print("📝 Saving conversation history...")
+            self._save_conversation_history()
+            print("✅ Cleanup complete!")
+
+        except Exception as e:
+            logger.error(f"Error during cleanup: {e}")
+            print(f"❌ Error during cleanup: {str(e)[:100]}")
+
+        print("=" * 50)
     def process_command(self, command_text: str) -> Tuple[str, str]:
         """
         Process a command and determine the appropriate action.
