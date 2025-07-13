@@ -18,9 +18,9 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 # Import assistant modules
 from assistant.memory_manager import MemoryManager
-from assistant.speech_recognition_service import SpeechRecognizer
+from assistant.speech_recognition_service import SpeechRecognitionService
 from assistant.tts_service import TTSService
-from assistant.intent_classifier import classify_intent
+from assistant.intent_classifier import IntentClassifier, intent_classifier
 from assistant.spotify_control import control_spotify
 from assistant.browser_control import browser_action
 from assistant.whatsapp_integration import whatsapp_action
@@ -233,12 +233,8 @@ class SamanthaAssistant:
         self._show_initialization_progress("Loading speech recognition")
         recognizer_config = config_manager.get_section('speech_recognition')
         try:
-            self.recognizer = SpeechRecognizer(
-                model_size=recognizer_config.get('model_size', 'tiny'),
-                device=recognizer_config.get('device', 'cpu'),
-                vad_threshold=recognizer_config.get('vad', {}).get('threshold', 0.5),
-                vad_sensitivity=recognizer_config.get('vad', {}).get('sensitivity', 0.75)
-            )
+            # Initialize using SpeechRecognitionService instead of SpeechRecognizer
+            self.recognizer = SpeechRecognitionService()
         except Exception as e:
             logger.error(f"Failed to initialize speech recognition: {e}")
             StatusIndicator.show_error(f"Speech recognition initialization failed: {str(e)[:50]}...")
@@ -249,11 +245,7 @@ class SamanthaAssistant:
         self._show_initialization_progress("Setting up text-to-speech")
         tts_config = config_manager.get_section('tts')
         try:
-            self.tts_engine = TTSService(
-                engine=tts_config.get('engine', 'system'),
-                rate=tts_config.get('rate', 180),
-                volume=tts_config.get('volume', 0.8)
-            )
+            self.tts_engine = TTSService()
             self._configure_tts()
         except Exception as e:
             logger.error(f"Failed to initialize text-to-speech: {e}")
@@ -291,11 +283,8 @@ class SamanthaAssistant:
                 device = "cpu"
 
         try:
-            self.intent_classifier = IntentClassifier(
-                device=device,
-                model_path=intent_config.get('model_path'),
-                threshold=intent_config.get('threshold', 0.6)
-            )
+            from assistant.intent_classifier import intent_classifier
+            self.intent_classifier = intent_classifier
         except Exception as e:
             logger.error(f"Failed to initialize intent classifier: {e}")
             StatusIndicator.show_error(f"Intent classifier initialization failed: {str(e)[:50]}...")
@@ -353,19 +342,35 @@ class SamanthaAssistant:
     def _create_fallback_recognizer(self):
         """Create a minimal fallback speech recognizer"""
         class FallbackRecognizer:
-            def listen(self, timeout=5):
+            def recognize_speech(self, audio_data=None, timeout=None):
                 print("\nFallback speech recognition active (speech recognition unavailable)")
                 try:
                     text = input("Type your command: ")
-                    return text
+                    return {
+                        "success": True,
+                        "error": None,
+                        "text": text,
+                        "confidence": 1.0,
+                        "engine": "fallback"
+                    }
                 except:
-                    return ""
+                    return {
+                        "success": False,
+                        "error": "Input error",
+                        "text": "",
+                        "confidence": 0.0,
+                        "engine": "fallback"
+                    }
 
-            def continuous_listen(self, callback):
+            def _listen(self):
+                return None  # Placeholder
+
+            def start_continuous_listening(self, callback):
                 print("Continuous listening not available in fallback mode")
+                return False
 
-            def stop_listening(self):
-                pass
+            def stop_continuous_listening(self):
+                return True
 
         return FallbackRecognizer()
 
@@ -504,7 +509,12 @@ class SamanthaAssistant:
                     return message, "confirmation_handled"
 
             # Detect intent using the enhanced classifier
-            intent_data = self.intent_classifier.classify_with_context(text, conversation_context)
+            intent, confidence = self.intent_classifier.classify(text)
+            intent_data = {
+                "intent": intent,
+                "confidence": confidence,
+                "method": "classifier"
+            }
             intent = intent_data["intent"]
             confidence = intent_data["confidence"]
 
@@ -915,7 +925,13 @@ class SamanthaAssistant:
             listening_thread.start()
 
             # Start listening with dynamic VAD
-            text = self.recognizer.listen()
+            # Modified to use SpeechRecognitionService's _listen and recognize_speech methods
+            audio_data = self.recognizer._listen()
+            if audio_data is not None:
+                result = self.recognizer.recognize_speech(audio_data)
+                text = result["text"] if result["success"] else ""
+            else:
+                text = ""
 
             # Clear listening indicator
             StatusIndicator.clear_line()
@@ -976,9 +992,10 @@ class SamanthaAssistant:
         self.session_manager.set_setting('continuous_mode', True)
         self._speak("Continuous listening mode activated. You can speak directly without using my wake word.")
 
-        def command_callback(text):
-            if text:
+        def command_callback(text_result):
+            if text_result["success"] and text_result["text"]:
                 # Show what was heard
+                text = text_result["text"]
                 print(f"👂 Heard: {text}")
 
                 # Process the command directly
@@ -986,7 +1003,7 @@ class SamanthaAssistant:
 
         # Start continuous listening with enhanced VAD
         try:
-            self.recognizer.continuous_listen(command_callback)
+            self.recognizer.start_continuous_listening(command_callback)
             StatusIndicator.show_success("Continuous listening started")
         except Exception as e:
             logger.error(f"Failed to start continuous mode: {e}")
@@ -1004,33 +1021,33 @@ class SamanthaAssistant:
             preferred_names = voice_config.get('preferred_names', ['zira', 'susan', 'samantha'])
 
             # Set voice properties
-            voices = self.tts_engine.getProperty('voices')
+            voices = self.tts_engine.get_available_voices()
             if voices:
                 # First try to match both gender and name
                 voice_set = False
                 for voice in voices:
-                    voice_name = voice.name.lower()
+                    voice_name = voice.get('name', '').lower()
                     if (preferred_gender in voice_name and
                         any(name in voice_name for name in preferred_names)):
-                        self.tts_engine.setProperty('voice', voice.id)
+                        self.tts_engine.set_voice(voice.get('id'))
                         voice_set = True
                         break
 
                 # Then try to match just gender
                 if not voice_set:
                     for voice in voices:
-                        if preferred_gender in voice.name.lower():
-                            self.tts_engine.setProperty('voice', voice.id)
+                        if preferred_gender in voice.get('name', '').lower():
+                            self.tts_engine.set_voice(voice.get('id'))
                             voice_set = True
                             break
 
                 # Use first available voice as fallback
                 if not voice_set and voices:
-                    self.tts_engine.setProperty('voice', voices[0].id)
+                    self.tts_engine.set_voice(voices[0].get('id'))
 
             # Set speech rate and volume
-            self.tts_engine.setProperty('rate', tts_config.get('rate', 180))
-            self.tts_engine.setProperty('volume', tts_config.get('volume', 0.8))
+            self.tts_engine.set_rate(tts_config.get('rate', 180))
+            self.tts_engine.set_volume(tts_config.get('volume', 0.8))
 
         except Exception as e:
             logger.warning(f"⚠️ TTS configuration warning: {e}")
@@ -1047,7 +1064,14 @@ class SamanthaAssistant:
             listening_thread.start()
 
             logger.info("🎤 Listening...")
-            text = self.recognizer.listen(timeout=timeout)
+
+            # Modified to use SpeechRecognitionService methods
+            audio_data = self.recognizer._listen()
+            if audio_data is not None:
+                result = self.recognizer.recognize_speech(audio_data, timeout=timeout)
+                text = result["text"] if result["success"] else ""
+            else:
+                text = ""
 
             # Clear listening indicator
             StatusIndicator.clear_line()
@@ -1144,6 +1168,8 @@ class SamanthaAssistant:
             if self.continuous_mode:
                 self.continuous_mode = False
                 self.session_manager.set_setting('continuous_mode', False)
+                if hasattr(self.recognizer, 'stop_continuous_listening'):
+                    self.recognizer.stop_continuous_listening()
                 StatusIndicator.show_success("Continuous listening mode deactivated")
             return "I'll stop listening now. Say 'Hey Samantha' to wake me up again."
 
@@ -1165,9 +1191,9 @@ class SamanthaAssistant:
             return "I can help with music control, web browsing, messaging, and more. You can also ask me to perform multi-step tasks."
 
         elif any(word in command_lower for word in ["volume up", "speak louder"]):
-            current_volume = self.tts_engine.getProperty('volume')
+            current_volume = self.tts_engine.volume
             new_volume = min(1.0, current_volume + 0.1)
-            self.tts_engine.setProperty('volume', new_volume)
+            self.tts_engine.set_volume(new_volume)
 
             # Save volume setting in session
             self.session_manager.set_setting('tts_volume', new_volume)
@@ -1176,9 +1202,9 @@ class SamanthaAssistant:
             return "I'll speak louder now."
 
         elif any(word in command_lower for word in ["volume down", "speak quieter"]):
-            current_volume = self.tts_engine.getProperty('volume')
+            current_volume = self.tts_engine.volume
             new_volume = max(0.1, current_volume - 0.1)
-            self.tts_engine.setProperty('volume', new_volume)
+            self.tts_engine.set_volume(new_volume)
 
             # Save volume setting in session
             self.session_manager.set_setting('tts_volume', new_volume)
@@ -1190,6 +1216,7 @@ class SamanthaAssistant:
             self.continuous_mode = True
             self.session_manager.set_setting('continuous_mode', True)
 
+            self.start_continuous_mode()
             StatusIndicator.show_success("Continuous listening mode activated")
             return "I'm now in continuous listening mode. You can speak commands without saying my wake word first."
 
@@ -1294,9 +1321,9 @@ class SamanthaAssistant:
                 self.memory.cleanup()
 
             # Stop speech recognition
-            if hasattr(self, 'recognizer'):
+            if hasattr(self, 'recognizer') and hasattr(self.recognizer, 'stop_continuous_listening'):
                 print("🎤 Stopping speech recognition...")
-                self.recognizer.stop_listening()
+                self.recognizer.stop_continuous_listening()
 
             # Save conversation history
             print("📝 Saving conversation history...")
@@ -1346,7 +1373,7 @@ class SamanthaAssistant:
         if hasattr(self, 'tts_engine') and self.tts_engine:
             saved_volume = self.session_manager.get_setting('tts_volume')
             if saved_volume is not None:
-                self.tts_engine.setProperty('volume', saved_volume)
+                self.tts_engine.set_volume(saved_volume)
 
         # Restore continuous mode if it was active
         if self.continuous_mode:
@@ -1366,14 +1393,9 @@ class SamanthaAssistant:
         try:
             while self.running:
                 if self.continuous_mode:
-                    # In continuous mode, listen for commands directly
-                    command_speech = self._listen(timeout=config_manager.get('speech_recognition.timeout.command', 10))
-                    if command_speech:
-                        response = self.process_command(command_speech)
-
-                        # If goodbye command was given
-                        if not self.running:
-                            break
+                    # In continuous mode, listening happens in a background thread
+                    # Just sleep a bit to avoid CPU hogging in the main thread
+                    time.sleep(0.5)
                 else:
                     # Regular mode - listen for wake word with shorter timeout
                     speech = self._listen(timeout=config_manager.get('speech_recognition.timeout.wake_word', 2))

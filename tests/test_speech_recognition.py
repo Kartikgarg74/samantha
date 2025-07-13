@@ -1,292 +1,523 @@
 #!/usr/bin/env python3
 """
 Unit tests for the Speech Recognition Service.
-Tests voice activity detection, transcription, and configuration handling.
+Tests various speech recognition engines, continuous listening, and configuration.
 """
 
 import os
 import sys
 import unittest
 import pytest
-from unittest.mock import patch, MagicMock, PropertyMock
-import numpy as np
+from unittest.mock import patch, MagicMock, PropertyMock, call
 import tempfile
-import wave
 import json
 import time
+import threading
+import queue
 
 # Add the project root to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Import the modules to test
-from assistant.speech_recognition_service import SpeechRecognizer
-from assistant.config_manager import ConfigManager
+from assistant.speech_recognition_service import SpeechRecognitionService, SR_AVAILABLE, WHISPER_AVAILABLE
 
 # Mock config for testing
 MOCK_CONFIG = {
     "speech_recognition": {
-        "model_size": "tiny",
-        "device": "auto",
-        "vad": {
-            "enabled": True,
-            "threshold": 0.5,
-            "sensitivity": 0.75,
-            "min_speech_duration_ms": 250,
-            "max_speech_duration_s": 15,
-            "silence_duration_ms": 500
-        },
-        "timeout": {
-            "default": 3,
-            "wake_word": 1,
-            "command": 5
-        }
+        "engine": "google",
+        "language": "en-US",
+        "energy_threshold": 300,
+        "pause_threshold": 0.8,
+        "timeout": 5,
+        "phrase_time_limit": None,
+        "continuous_listen": False,
+        "whisper_model": "base"
     }
 }
 
-class TestSpeechRecognition(unittest.TestCase):
+class TestSpeechRecognitionService(unittest.TestCase):
     """Test cases for the speech recognition service."""
 
-    @classmethod
-    def setUpClass(cls):
-        """Set up test fixtures before running tests."""
-        # Create a temporary config file
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as temp_file:
-            cls.temp_config_path = temp_file.name
-            json.dump(MOCK_CONFIG, temp_file)
+    def setUp(self):
+        """Set up test fixtures before each test."""
+        # Patch the config manager
+        self.config_patcher = patch('assistant.speech_recognition_service.config_manager')
+        self.mock_config = self.config_patcher.start()
+        self.mock_config.get_section.return_value = MOCK_CONFIG["speech_recognition"]
 
-        # Create a test audio file with sine wave (represents speech)
-        cls.test_audio_path = cls._create_test_audio()
+        # Patch the speech_recognition library
+        self.sr_patcher = patch('assistant.speech_recognition_service.sr')
+        self.mock_sr = self.sr_patcher.start()
 
-    @classmethod
-    def tearDownClass(cls):
-        """Tear down test fixtures after running tests."""
-        # Remove temporary files
-        if os.path.exists(cls.temp_config_path):
-            os.unlink(cls.temp_config_path)
+        # Set up mock recognizer and microphone
+        self.mock_recognizer = MagicMock()
+        self.mock_sr.Recognizer.return_value = self.mock_recognizer
 
-        if os.path.exists(cls.test_audio_path):
-            os.unlink(cls.test_audio_path)
+        self.mock_microphone = MagicMock()
+        self.mock_sr.Microphone.return_value = self.mock_microphone
 
-    @classmethod
-    def _create_test_audio(cls):
-        """Create a test audio file with a sine wave."""
-        # Parameters
-        sample_rate = 16000
-        duration = 2  # seconds
-        frequency = 440  # Hz (A4 note)
+        # Create actual exception classes for better mocking
+        class MockUnknownValueError(Exception):
+            pass
 
-        # Generate sine wave
-        t = np.linspace(0, duration, int(sample_rate * duration), False)
-        audio = np.sin(2 * np.pi * frequency * t) * 0.5
-        audio = (audio * 32767).astype(np.int16)
+        class MockRequestError(Exception):
+            def __init__(self, message):
+                self.message = message
+                super().__init__(message)
 
-        # Save as WAV
-        file_path = tempfile.mktemp(suffix='.wav')
-        with wave.open(file_path, 'wb') as wf:
-            wf.setnchannels(1)
-            wf.setsampwidth(2)
-            wf.setframerate(sample_rate)
-            wf.writeframes(audio.tobytes())
+        class MockWaitTimeoutError(Exception):
+            pass
 
-        return file_path
+        self.mock_sr.UnknownValueError = MockUnknownValueError
+        self.mock_sr.RequestError = MockRequestError
+        self.mock_sr.WaitTimeoutError = MockWaitTimeoutError
 
-    @patch('assistant.config_manager.ConfigManager')
-    def test_initialization(self, mock_config_manager):
-        """Test the initialization of the speech recognizer."""
-        # Mock the config manager
-        mock_config_manager.get_section.return_value = MOCK_CONFIG["speech_recognition"]
-        mock_config_manager.get.return_value = MOCK_CONFIG["speech_recognition"]
+        # Patch whisper if needed
+        if WHISPER_AVAILABLE:
+            self.whisper_patcher = patch('assistant.speech_recognition_service.whisper')
+            self.mock_whisper = self.whisper_patcher.start()
+            self.mock_whisper_model = MagicMock()
+            self.mock_whisper.load_model.return_value = self.mock_whisper_model
+        else:
+            self.whisper_patcher = None
 
-        # Patch the model initialization to avoid actual loading
-        with patch('assistant.speech_recognition_service.SpeechRecognizer._initialize_model'):
-            # Create recognizer
-            recognizer = SpeechRecognizer()
+        # Set flag for available libraries
+        self.sr_available_patcher = patch('assistant.speech_recognition_service.SR_AVAILABLE', True)
+        self.sr_available_patcher.start()
 
-            # Check if the configuration was properly applied
-            self.assertEqual(recognizer.model_size, "tiny")
-            self.assertEqual(recognizer.device, "cpu")
-            self.assertEqual(recognizer.vad_threshold, 0.5)
-            self.assertEqual(recognizer.vad_sensitivity, 0.75)
-            self.assertTrue(recognizer.vad_enabled)
+    def tearDown(self):
+        """Clean up after tests."""
+        # Stop all patches
+        self.config_patcher.stop()
+        self.sr_patcher.stop()
+        self.sr_available_patcher.stop()
 
-    @patch('assistant.config_manager.ConfigManager')
-    @patch('assistant.speech_recognition_service.SpeechRecognizer._initialize_model')
-    def test_vad_settings_update(self, mock_init_model, mock_config_manager):
-        """Test updating VAD settings."""
-        # Mock the config manager
-        mock_config_manager.get_section.return_value = MOCK_CONFIG["speech_recognition"]
+        if self.whisper_patcher:
+            self.whisper_patcher.stop()
 
-        # Create recognizer
-        recognizer = SpeechRecognizer()
+    def test_initialization(self):
+        """Test the initialization of the speech recognition service."""
+        service = SpeechRecognitionService()
 
-        # Initial values
-        self.assertEqual(recognizer.vad_threshold, 0.5)
-        self.assertEqual(recognizer.vad_sensitivity, 0.75)
+        # Check if the configuration was properly applied
+        self.assertEqual(service.engine_name, "google")
+        self.assertEqual(service.language, "en-US")
+        self.assertEqual(service.energy_threshold, 300)
+        self.assertEqual(service.pause_threshold, 0.8)
 
-        # Update settings
-        recognizer.update_vad_settings(threshold=0.7, sensitivity=0.8)
+        # Verify that the recognizer was initialized
+        self.mock_sr.Recognizer.assert_called_once()
+        self.assertEqual(self.mock_recognizer.energy_threshold, 300)
+        self.assertEqual(self.mock_recognizer.pause_threshold, 0.8)
 
-        # Check updated values
-        self.assertEqual(recognizer.vad_threshold, 0.7)
-        self.assertEqual(recognizer.vad_sensitivity, 0.8)
+    def test_recognize_speech_with_google(self):
+        """Test speech recognition with Google engine."""
+        # Setup mock for Google recognition
+        self.mock_recognizer.recognize_google.return_value = "Hello world"
 
-        # Test boundary conditions
-        recognizer.update_vad_settings(threshold=1.5, sensitivity=1.5)
-        self.assertEqual(recognizer.vad_threshold, 1.0)  # Should be capped at 1.0
-        self.assertEqual(recognizer.vad_sensitivity, 1.0)  # Should be capped at 1.0
+        # Create service and mock audio data
+        service = SpeechRecognitionService()
+        mock_audio = MagicMock()
 
-        recognizer.update_vad_settings(threshold=-0.5, sensitivity=-0.5)
-        self.assertEqual(recognizer.vad_threshold, 0.0)  # Should be floored at 0.0
-        self.assertEqual(recognizer.vad_sensitivity, 0.0)  # Should be floored at 0.0
+        # Test recognition
+        result = service.recognize_speech(mock_audio)
 
-    @patch('assistant.config_manager.ConfigManager')
-    @patch('assistant.speech_recognition_service.SpeechRecognizer._initialize_model')
-    @patch('sounddevice.rec')
-    @patch('sounddevice.wait')
-    def test_listen_timeout(self, mock_wait, mock_rec, mock_init_model, mock_config_manager):
-        """Test that listen respects the timeout parameter."""
-        # Mock the config manager
-        mock_config_manager.get_section.return_value = MOCK_CONFIG["speech_recognition"]
+        # Verify results
+        self.assertTrue(result["success"])
+        self.assertEqual(result["text"], "Hello world")
+        self.assertEqual(result["engine"], "google")
+        self.assertGreater(result["confidence"], 0)
 
-        # Create recognizer
-        recognizer = SpeechRecognizer()
+        # Verify the correct recognition method was called
+        self.mock_recognizer.recognize_google.assert_called_once_with(
+            mock_audio, language="en-US", show_all=False
+        )
 
-        # Mock the recording functions
-        mock_rec.return_value = np.zeros((16000 * 3,), dtype=np.int16)  # 3 seconds of silence
+    def test_recognize_speech_with_whisper(self):
+        """Test speech recognition with Whisper engine if available."""
+        if not WHISPER_AVAILABLE:
+            self.skipTest("Whisper not available")
 
-        # Mock the VAD model to always return no speech
-        recognizer.vad_model = MagicMock()
-        recognizer.vad_model.get_speech_prob.return_value = 0.1  # Below threshold
+        # Create a temporary file
+        temp_file = tempfile.NamedTemporaryFile(delete=False)
+        temp_file.close()
 
-        # Set the model to None to skip actual transcription
-        recognizer.model = None
+        try:
+            # Setup Whisper model mock
+            whisper_result = {"text": "Whisper transcription", "confidence": 0.9}
+            self.mock_whisper_model.transcribe.return_value = whisper_result
 
-        # Test with explicit timeout
-        start_time = time.time()
-        result = recognizer.listen(timeout=2)
-        elapsed_time = time.time() - start_time
+            # Setup audio data mock
+            mock_audio = MagicMock()
+            mock_audio.get_wav_data.return_value = b"fake audio data"
 
-        # Should return empty string for silence
-        self.assertEqual(result, "")
+            # Configure service for Whisper
+            with patch('assistant.speech_recognition_service.WHISPER_AVAILABLE', True):
+                service = SpeechRecognitionService()
+                service.engine_name = "whisper"
+                service._whisper_model = self.mock_whisper_model
 
-        # Should respect timeout (with some margin)
-        self.assertLess(elapsed_time, 3.0)  # Should not exceed timeout by too much
+                # Test recognition
+                result = service.recognize_speech(mock_audio)
 
-    @patch('assistant.config_manager.ConfigManager')
-    @patch('assistant.speech_recognition_service.SpeechRecognizer._initialize_model')
-    @patch('torch.from_numpy')
-    def test_continuous_listen(self, mock_torch, mock_init_model, mock_config_manager):
+                # Verify results
+                self.assertTrue(result["success"])
+                self.assertEqual(result["text"], "Whisper transcription")
+                self.assertEqual(result["engine"], "whisper")
+                self.assertEqual(result["confidence"], 0.9)
+
+                # Verify that model.transcribe was called
+                self.mock_whisper_model.transcribe.assert_called_once()
+        finally:
+            # Clean up
+            if os.path.exists(temp_file.name):
+                os.remove(temp_file.name)
+
+    def test_recognize_speech_with_sphinx(self):
+        """Test speech recognition with Sphinx engine."""
+        # Setup mock for Sphinx recognition
+        self.mock_recognizer.recognize_sphinx.return_value = "Sphinx transcription"
+
+        # Create service and mock audio data
+        service = SpeechRecognitionService()
+        service.engine_name = "sphinx"
+        mock_audio = MagicMock()
+
+        # Test recognition
+        result = service.recognize_speech(mock_audio)
+
+        # Verify results
+        self.assertTrue(result["success"])
+        self.assertEqual(result["text"], "Sphinx transcription")
+        self.assertEqual(result["engine"], "sphinx")
+        self.assertGreater(result["confidence"], 0)
+
+        # Verify the correct recognition method was called
+        self.mock_recognizer.recognize_sphinx.assert_called_once_with(
+            mock_audio, language="en-US"
+        )
+
+    def test_recognize_speech_with_errors(self):
+        """Test handling of recognition errors."""
+        # Create service
+        service = SpeechRecognitionService()
+        mock_audio = MagicMock()
+
+        # Patch the recognize_speech_with_error helper to inject our exceptions
+        def mock_recognize_with_google(audio_data, language, show_all):
+            raise self.mock_sr.UnknownValueError()
+
+        # Test UnknownValueError
+        self.mock_recognizer.recognize_google.side_effect = mock_recognize_with_google
+        result = service.recognize_speech(mock_audio)
+        self.assertFalse(result["success"])
+        self.assertEqual(result["error"], "Could not understand audio")
+
+        # Test RequestError
+        def mock_recognize_with_request_error(audio_data, language, show_all):
+            raise self.mock_sr.RequestError("Network error")
+
+        self.mock_recognizer.recognize_google.side_effect = mock_recognize_with_request_error
+        result = service.recognize_speech(mock_audio)
+        self.assertFalse(result["success"])
+        self.assertEqual(result["error"], "Recognition request failed: Network error")
+
+        # Test general exception
+        def mock_recognize_with_general_error(audio_data, language, show_all):
+            raise Exception("General error")
+
+        self.mock_recognizer.recognize_google.side_effect = mock_recognize_with_general_error
+        result = service.recognize_speech(mock_audio)
+        self.assertFalse(result["success"])
+        self.assertEqual(result["error"], "Recognition error: General error")
+
+    def test_listen_function(self):
+        """Test the _listen function for microphone input."""
+        # Setup mock audio
+        mock_audio = MagicMock()
+        self.mock_recognizer.listen.return_value = mock_audio
+
+        # Create service
+        service = SpeechRecognitionService()
+
+        # Test listening
+        audio = service._listen()
+
+        # Verify that the microphone was used and listen was called
+        self.mock_sr.Microphone.assert_called_once()
+        self.mock_recognizer.adjust_for_ambient_noise.assert_called_once()
+        self.mock_recognizer.listen.assert_called_once_with(
+            self.mock_microphone.__enter__.return_value,
+            timeout=5,
+            phrase_time_limit=None
+        )
+        self.assertEqual(audio, mock_audio)
+
+    def test_listen_with_timeout(self):
+        """Test that _listen handles timeouts properly."""
+        # Setup timeout error
+        def raise_timeout(*args, **kwargs):
+            raise self.mock_sr.WaitTimeoutError()
+
+        self.mock_recognizer.listen.side_effect = raise_timeout
+
+        # Create service
+        service = SpeechRecognitionService()
+
+        # Test listening with timeout
+        audio = service._listen()
+
+        # Verify that None is returned on timeout
+        self.assertIsNone(audio)
+
+    def test_continuous_listening(self):
         """Test continuous listening functionality."""
-        # Mock the config manager
-        mock_config_manager.get_section.return_value = MOCK_CONFIG["speech_recognition"]
+        # Create service
+        service = SpeechRecognitionService()
 
-        # Create recognizer
-        recognizer = SpeechRecognizer()
-        recognizer.model = None  # Skip actual transcription
+        # Mock the recognize_speech method to return predetermined results
+        original_recognize_speech = service.recognize_speech
 
-        # Create a mock listen method that returns predefined values
-        listen_results = ["hello", "", "test"]
-        recognizer.listen = MagicMock(side_effect=listen_results)
+        results = [
+            {"success": True, "text": "First result", "confidence": 0.8, "engine": "google", "error": None},
+            {"success": True, "text": "Second result", "confidence": 0.9, "engine": "google", "error": None},
+            {"success": False, "text": "", "confidence": 0, "engine": "google", "error": "Error"}
+        ]
 
-        # Create a callback to capture results
+        result_index = [0]  # Use list to allow modification in the inner function
+
+        def mock_recognize(*args, **kwargs):
+            if result_index[0] < len(results):
+                result = results[result_index[0]]
+                result_index[0] += 1
+                return result
+            return original_recognize_speech(*args, **kwargs)
+
+        service.recognize_speech = mock_recognize
+
+        # Mock the _listen method to return mock audio
+        mock_audio = MagicMock()
+        service._listen = MagicMock(return_value=mock_audio)
+
+        # Create a callback to track results
         callback_results = []
-        def test_callback(text):
-            callback_results.append(text)
-            # Stop after we get enough results to avoid infinite loop
+        def test_callback(result):
+            callback_results.append(result)
+            # Stop after we've processed enough results
             if len(callback_results) >= 2:
-                recognizer.listening = False
+                service._listening = False
 
         # Start continuous listening
-        recognizer.continuous_listen(test_callback)
+        service.start_continuous_listening(test_callback)
 
-        # Give the thread time to process
+        # Wait for processing to complete
         time.sleep(0.5)
 
         # Stop listening
-        recognizer.stop_listening()
+        service.stop_continuous_listening()
 
-        # Check that the callback was called with non-empty results
-        self.assertEqual(len(callback_results), 2)
-        self.assertEqual(callback_results, ["hello", "test"])
+        # Verify results
+        self.assertEqual(len(callback_results), 2)  # Should have received 2 results
+        self.assertEqual(callback_results[0]["text"], "First result")
+        self.assertEqual(callback_results[1]["text"], "Second result")
 
-    @patch('assistant.config_manager.ConfigManager')
-    @patch('assistant.speech_recognition_service.SpeechRecognizer._initialize_model')
-    def test_get_vad_settings(self, mock_init_model, mock_config_manager):
-        """Test getting VAD settings."""
-        # Mock the config manager
-        mock_config_manager.get_section.return_value = MOCK_CONFIG["speech_recognition"]
+    def test_set_engine(self):
+        """Test setting the recognition engine."""
+        service = SpeechRecognitionService()
 
-        # Create recognizer
-        recognizer = SpeechRecognizer()
+        # Test setting valid engine
+        result = service.set_engine("sphinx")
+        self.assertTrue(result)
+        self.assertEqual(service.engine_name, "sphinx")
 
-        # Get the settings
-        settings = recognizer.get_vad_settings()
+        # Test setting invalid engine
+        result = service.set_engine("invalid_engine")
+        self.assertFalse(result)
+        self.assertEqual(service.engine_name, "sphinx")  # Should remain unchanged
 
-        # Check the returned settings
-        self.assertTrue(isinstance(settings, dict))
-        self.assertEqual(settings["threshold"], 0.5)
-        self.assertEqual(settings["sensitivity"], 0.75)
-        self.assertTrue(settings["enabled"])
-        self.assertEqual(settings["min_speech_duration_ms"], 250)
-        self.assertEqual(settings["max_speech_duration_s"], 10)
-        self.assertEqual(settings["silence_duration_ms"], 500)
+    def test_set_language(self):
+        """Test setting the recognition language."""
+        service = SpeechRecognitionService()
+        service.set_language("fr-FR")
+        self.assertEqual(service.language, "fr-FR")
+
+    def test_set_energy_threshold(self):
+        """Test setting energy threshold."""
+        service = SpeechRecognitionService()
+        service.set_energy_threshold(400)
+        self.assertEqual(service.energy_threshold, 400)
+        self.assertEqual(self.mock_recognizer.energy_threshold, 400)
+
+    def test_set_pause_threshold(self):
+        """Test setting pause threshold."""
+        service = SpeechRecognitionService()
+        service.set_pause_threshold(1.0)
+        self.assertEqual(service.pause_threshold, 1.0)
+        self.assertEqual(self.mock_recognizer.pause_threshold, 1.0)
+
+    def test_get_available_engines(self):
+        """Test getting available engines."""
+        # Mock availability checks
+        with patch('builtins.__import__', side_effect=[None, ImportError(), None]):
+            service = SpeechRecognitionService()
+            engines = service.get_available_engines()
+
+            # Google should always be available in our mock
+            self.assertEqual(engines["google"], "Available")
+
+            # Other engines depend on the imports
+            if WHISPER_AVAILABLE:
+                self.assertEqual(engines["whisper"], "Available")
+            else:
+                self.assertEqual(engines["whisper"], "Not installed")
+
+    def test_transcribe_file(self):
+        """Test transcribing from a file."""
+        # Create a temporary file
+        with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as temp_file:
+            file_path = temp_file.name
+
+        try:
+            # Setup mocks
+            mock_audio = MagicMock()
+            mock_source = MagicMock()
+            mock_context = MagicMock()
+
+            self.mock_sr.AudioFile.return_value = mock_source
+            mock_source.__enter__.return_value = mock_context
+            self.mock_recognizer.record.return_value = mock_audio
+            self.mock_recognizer.recognize_google.return_value = "File transcription"
+
+            # Create service
+            service = SpeechRecognitionService()
+
+            # Override recognize_speech to return a success response
+            service.recognize_speech = MagicMock(return_value={
+                "success": True,
+                "text": "File transcription",
+                "confidence": 0.8,
+                "engine": "google",
+                "error": None
+            })
+
+            # Test file transcription
+            result = service.transcribe_file(file_path)
+
+            # Verify results
+            self.assertTrue(result["success"])
+            self.assertEqual(result["text"], "File transcription")
+
+            # Verify method calls
+            self.mock_sr.AudioFile.assert_called_once_with(file_path)
+            self.mock_recognizer.record.assert_called_once()  # Just check if called, not the exact arguments
+        finally:
+            # Clean up
+            if os.path.exists(file_path):
+                os.remove(file_path)
+
+    def test_transcribe_nonexistent_file(self):
+        """Test handling of non-existent files."""
+        service = SpeechRecognitionService()
+        result = service.transcribe_file("nonexistent_file.wav")
+
+        self.assertFalse(result["success"])
+        self.assertEqual(result["error"], "File not found: nonexistent_file.wav")
 
 
-# Additional tests with pytest for more modern testing approach
+# Additional tests using pytest
 
 @pytest.fixture
-def mock_recognizer():
-    """Create a speech recognizer with mocked dependencies."""
-    with patch('assistant.config_manager.ConfigManager') as mock_config:
+def mock_sr_service():
+    """Create a speech recognition service with mocked dependencies."""
+    with patch('assistant.speech_recognition_service.config_manager') as mock_config, \
+         patch('assistant.speech_recognition_service.sr') as mock_sr, \
+         patch('assistant.speech_recognition_service.SR_AVAILABLE', True):
+
+        # Configure mock
         mock_config.get_section.return_value = MOCK_CONFIG["speech_recognition"]
-        with patch('assistant.speech_recognition_service.SpeechRecognizer._initialize_model'):
-            recognizer = SpeechRecognizer()
-            yield recognizer
 
-def test_fallback_to_cpu(mock_recognizer):
-    """Test that the recognizer falls back to CPU on errors."""
-    # Force an error in model initialization
-    with patch('assistant.speech_recognition_service.SpeechRecognizer._initialize_model') as mock_init:
-        mock_init.side_effect = RuntimeError("GPU not available")
+        # Setup recognizer mock
+        mock_recognizer = MagicMock()
+        mock_sr.Recognizer.return_value = mock_recognizer
 
-        # Should not raise an exception, but fall back to CPU
-        with pytest.raises(RuntimeError):
-            recognizer = SpeechRecognizer(device="cuda")
+        # Create service
+        service = SpeechRecognitionService()
+        yield service, mock_recognizer, mock_sr
 
-@pytest.mark.parametrize("vad_enabled,expected", [
-    (True, True),
-    (False, False)
+def test_recognize_speech_empty_audio(mock_sr_service):
+    """Test recognizing speech with empty audio input."""
+    service, mock_recognizer, _ = mock_sr_service
+
+    # Test with None audio data
+    service._listen = MagicMock(return_value=None)
+    result = service.recognize_speech()
+
+    assert not result["success"]
+    assert "No audio input received" in result["error"]
+    assert result["text"] == ""
+
+@pytest.mark.parametrize("engine_name,expected_recognition_method", [
+    ("google", "recognize_google"),
+    ("sphinx", "recognize_sphinx"),
 ])
-def test_vad_configuration(vad_enabled, expected):
-    """Test different VAD configurations."""
-    # Create the mock configuration
-    mock_speech_recognition = {
-        "vad": {
-            "enabled": vad_enabled,
-            "threshold": 0.5,
-            "min_speech_duration_ms": 250,
-            "max_speech_duration_s": 10,
-            "silence_duration_ms": 500,
-            "sensitivity": 0.75
-        },
-        "model_size": "tiny",
-        "device": "cpu"
-    }
+def test_recognition_with_different_engines(mock_sr_service, engine_name, expected_recognition_method):
+    """Test recognition with different engines."""
+    service, mock_recognizer, _ = mock_sr_service
 
-    # Use patch to mock ConfigManager
-    with patch('assistant.config_manager.ConfigManager') as MockConfigManager:
-        # Set up the mock
-        mock_instance = MockConfigManager.return_value
-        mock_instance.get_section.return_value = mock_speech_recognition
+    # Set up the engine
+    service.set_engine(engine_name)
 
-        # Debug what's being returned
-        print("Mock config:", mock_instance.get_section("speech_recognition"))
+    # Configure mock to return text for any recognition method
+    getattr(mock_recognizer, expected_recognition_method).return_value = "Test text"
 
-        # Patch model initialization to avoid loading actual models
-        with patch('assistant.speech_recognition_service.SpeechRecognizer._initialize_model'):
-            # Create the recognizer with our mocked config
-            recognizer = SpeechRecognizer()
-            print("Recognizer vad_enabled:", recognizer.vad_enabled)
-            assert recognizer.vad_enabled == expected
+    # Create mock audio
+    mock_audio = MagicMock()
+
+    # Test recognition
+    result = service.recognize_speech(mock_audio)
+
+    # Verify result
+    assert result["success"]
+    assert result["text"] == "Test text"
+    assert result["engine"] == engine_name
+
+    # Verify the correct recognition method was called
+    getattr(mock_recognizer, expected_recognition_method).assert_called_once()
+
+def test_continuous_listening_callbacks(mock_sr_service):
+    """Test that callbacks are properly called in continuous listening."""
+    service, _, _ = mock_sr_service
+
+    # Mock the thread to avoid actual background processing
+    with patch('threading.Thread') as mock_thread:
+        # Set up callbacks
+        callback1 = MagicMock()
+        callback2 = MagicMock()
+
+        # Start listening with first callback
+        success1 = service.start_continuous_listening(callback1)
+        assert success1
+        assert service._listening
+        assert callback1 in service._callbacks
+
+        # Add second callback (this is a bit of a hack since we'd normally
+        # just pass both callbacks to start_continuous_listening)
+        service._callbacks.append(callback2)
+
+        # Simulate thread function calling callbacks
+        result = {"success": True, "text": "Test", "confidence": 0.9, "engine": "google", "error": None}
+        for callback in service._callbacks:
+            callback(result)
+
+        # Stop listening
+        success2 = service.stop_continuous_listening()
+        assert success2
+        assert not service._listening
+        assert len(service._callbacks) == 0
+
+        # Verify callbacks were called
+        callback1.assert_called_once_with(result)
+        callback2.assert_called_once_with(result)
+
 if __name__ == '__main__':
     unittest.main()

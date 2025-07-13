@@ -31,6 +31,11 @@ class TestSystemAutomation(unittest.TestCase):
         command = "open spotify"
         system_prompt = "You are a system automation assistant."
 
+        # Configure the mock to simulate a successful process
+        mock_process = MagicMock()
+        mock_process.poll.return_value = None  # Process is still running (success)
+        mock_popen.return_value = mock_process
+
         # Execute the command
         response, action = system_action(command, system_prompt)
 
@@ -140,6 +145,10 @@ class TestSystemAutomation(unittest.TestCase):
 def mock_subprocess_popen():
     """Create a mock for subprocess.Popen."""
     with patch('subprocess.Popen') as mock_popen:
+        # Configure the mock to simulate a successful process
+        mock_process = MagicMock()
+        mock_process.poll.return_value = None  # Process is still running (success)
+        mock_popen.return_value = mock_process
         yield mock_popen
 
 @pytest.fixture
@@ -189,10 +198,14 @@ def test_system_restart(mock_subprocess_run):
     assert action == "system_restart"
     assert mock_subprocess_run.called
 
-def test_system_action_error_handling(mock_subprocess_run):
+@patch('subprocess.Popen')
+def test_system_action_error_handling(mock_popen):
     """Test handling of system command errors."""
-    # Configure the mock to return an error
-    mock_subprocess_run.return_value = MagicMock(returncode=1)
+    # Configure the mock to simulate a failed process
+    mock_process = MagicMock()
+    mock_process.poll.return_value = 1  # Process failed with error code 1
+    mock_process.returncode = 1
+    mock_popen.return_value = mock_process
 
     command = "open settings"
     system_prompt = "You are a system automation assistant."

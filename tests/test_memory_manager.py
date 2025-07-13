@@ -1,288 +1,268 @@
 #!/usr/bin/env python3
 """
-Unit tests for the Memory Manager.
-Tests conversation history, context management, and user preferences.
+Unit tests for the Memory Manager module.
+Tests memory storage, retrieval, context management, and persistence.
 """
 
 import os
 import sys
-import unittest
-import pytest
 import json
+import unittest
 import tempfile
-import shutil
-from datetime import datetime, timedelta
+import time
 from unittest.mock import patch, MagicMock, mock_open
+import pytest
+from datetime import datetime
 
 # Add the project root to the Python path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, project_root)
 
-# Import the modules to test
+# Import the module to test
 from assistant.memory_manager import MemoryManager
 
+
 class TestMemoryManager(unittest.TestCase):
-    """Test cases for memory manager functionality."""
+    """Test cases for the MemoryManager class."""
 
     def setUp(self):
-        """Set up test fixtures before each test."""
-        # Create a temporary directory for test files
-        self.test_dir = tempfile.mkdtemp()
-        self.memory_file = os.path.join(self.test_dir, "test_memory.json")
+        """Set up test environment."""
+        # Create a temporary directory for memory storage
+        self.temp_dir = tempfile.TemporaryDirectory()
 
-        # Create a memory manager with test settings
-        self.memory = MemoryManager(
-            max_conversations=5,
-            max_conversation_length=3,
-            persist_user_preferences=True,
-            file_path=self.memory_file
-        )
+        # Initialize with the test directory
+        self.memory_manager = MemoryManager(data_dir=self.temp_dir.name)
 
     def tearDown(self):
-        """Tear down test fixtures after each test."""
-        # Remove temporary test directory
-        shutil.rmtree(self.test_dir)
+        """Clean up after tests."""
+        # Remove temporary directory
+        self.temp_dir.cleanup()
 
-    def test_add_user_message(self):
-        """Test adding user messages to memory."""
-        # Add some test messages
-        self.memory.add_user_message("Hello assistant")
-        self.memory.add_user_message("How are you today?")
+    def test_initialization(self):
+        """Test memory manager initialization."""
+        # Check if memory structures were initialized
+        self.assertIsNotNone(self.memory_manager.conversation_history)
+        self.assertIsInstance(self.memory_manager.conversation_history, list)
+        self.assertIsNotNone(self.memory_manager.user_preferences)
+        self.assertIsInstance(self.memory_manager.user_preferences, dict)
+        self.assertIsNotNone(self.memory_manager.context_data)
+        self.assertIsInstance(self.memory_manager.context_data, dict)
 
-        # Check that messages were stored
-        conversations = self.memory._conversations
-        self.assertEqual(len(conversations), 2)
-        self.assertEqual(conversations[0]["text"], "Hello assistant")
-        self.assertEqual(conversations[0]["speaker"], "user")
-        self.assertEqual(conversations[1]["text"], "How are you today?")
+        # Check paths
+        self.assertTrue(os.path.exists(self.memory_manager.data_dir))
+        self.assertEqual(self.memory_manager.history_path,
+                         os.path.join(self.temp_dir.name, "conversation_history.json"))
+        self.assertEqual(self.memory_manager.preferences_path,
+                         os.path.join(self.temp_dir.name, "user_preferences.json"))
+        self.assertEqual(self.memory_manager.context_path,
+                         os.path.join(self.temp_dir.name, "context_data.json"))
 
-        # Verify timestamps were added
-        self.assertTrue("timestamp" in conversations[0])
-        timestamp = conversations[0]["timestamp"]
-        self.assertTrue(isinstance(datetime.fromisoformat(timestamp), datetime))
+    def test_add_conversation_entry(self):
+        """Test adding entries to conversation history."""
+        # Add user message
+        self.memory_manager.add_conversation_entry("user", "Hello, how are you?")
 
-    def test_add_assistant_message(self):
-        """Test adding assistant messages to memory."""
-        # Add test message with action
-        self.memory.add_assistant_message("I can help you with that", action="general_response")
+        # Add assistant message
+        self.memory_manager.add_conversation_entry("assistant", "I'm doing well, thank you!")
 
-        # Check message and action were stored
-        conversations = self.memory._conversations
-        self.assertEqual(len(conversations), 1)
-        self.assertEqual(conversations[0]["text"], "I can help you with that")
-        self.assertEqual(conversations[0]["speaker"], "assistant")
-        self.assertEqual(conversations[0]["action"], "general_response")
+        # Verify messages were added
+        self.assertEqual(len(self.memory_manager.conversation_history), 2)
 
-    def test_max_conversation_length(self):
-        """Test that conversation length is limited as specified."""
-        # Add more messages than the limit
-        for i in range(5):  # Max is set to 3
-            self.memory.add_user_message(f"Test message {i}")
+        # Verify content
+        self.assertEqual(self.memory_manager.conversation_history[0]["text"], "Hello, how are you?")
+        self.assertEqual(self.memory_manager.conversation_history[0]["speaker"], "user")
+        self.assertEqual(self.memory_manager.conversation_history[1]["text"], "I'm doing well, thank you!")
+        self.assertEqual(self.memory_manager.conversation_history[1]["speaker"], "assistant")
 
-        # Check that only the most recent messages are kept
-        conversations = self.memory._conversations
-        self.assertEqual(len(conversations), 3)  # Should be limited to 3
-        self.assertEqual(conversations[0]["text"], "Test message 2")
-        self.assertEqual(conversations[1]["text"], "Test message 3")
-        self.assertEqual(conversations[2]["text"], "Test message 4")
+    def test_get_conversation_history(self):
+        """Test retrieving conversation history."""
+        # Add several conversation entries
+        for i in range(5):
+            self.memory_manager.add_conversation_entry("user" if i % 2 == 0 else "assistant", f"Message {i}")
 
-    def test_get_conversation_context(self):
-        """Test retrieving conversation context."""
-        # Add some test conversation
-        self.memory.add_user_message("What's the weather like?")
-        self.memory.add_assistant_message("It's sunny today", action="weather_info")
-        self.memory.add_user_message("Thank you")
+        # Get all history
+        history = self.memory_manager.get_conversation_history()
+        self.assertEqual(len(history), 5)
 
-        # Get the context
-        context = self.memory.get_conversation_context()
+        # Get limited history
+        limited_history = self.memory_manager.get_conversation_history(n_recent=3)
+        self.assertEqual(len(limited_history), 3)
 
-        # Check that context contains the expected data
-        self.assertIn("recent_exchanges", context)
-        exchanges = context["recent_exchanges"]
-        self.assertEqual(len(exchanges), 2)  # Should have 2 exchanges (3 messages)
-
-        # Check the first exchange
-        first_exchange = exchanges[0]
-        self.assertEqual(first_exchange["user"], "What's the weather like?")
-        self.assertEqual(first_exchange["assistant"], "It's sunny today")
-        self.assertEqual(first_exchange["action"], "weather_info")
-
-    def test_set_get_context(self):
-        """Test setting and getting context variables."""
-        # Set some context variables
-        self.memory.set_context("current_app", "spotify")
-        self.memory.set_context("playing_song", "Bohemian Rhapsody")
-
-        # Get context variables
-        app = self.memory.get_context("current_app")
-        song = self.memory.get_context("playing_song")
-
-        # Check values
-        self.assertEqual(app, "spotify")
-        self.assertEqual(song, "Bohemian Rhapsody")
-
-        # Test default value for missing key
-        missing = self.memory.get_context("nonexistent_key", default="not found")
-        self.assertEqual(missing, "not found")
+        # Check order (should be chronological)
+        self.assertEqual(limited_history[0]["text"], "Message 2")
+        self.assertEqual(limited_history[1]["text"], "Message 3")
+        self.assertEqual(limited_history[2]["text"], "Message 4")
 
     def test_user_preferences(self):
-        """Test storing and retrieving user preferences."""
-        # Set some preferences
-        self.memory.set_user_preference("personal", "name", "John")
-        self.memory.set_user_preference("music", "favorite_genre", "Rock")
-        self.memory.set_user_preference("music", "favorite_artist", "Queen")
+        """Test setting and getting user preferences."""
+        # Test setting a preference
+        self.memory_manager.set_user_preference("preferred_voice", "female")
 
-        # Get all preferences
-        prefs = self.memory.get_user_preferences()
+        # Verify preference was set
+        self.assertEqual(self.memory_manager.user_preferences["preferred_voice"], "female")
 
-        # Check values
-        self.assertEqual(prefs["personal"]["name"], "John")
-        self.assertEqual(prefs["music"]["favorite_genre"], "Rock")
-        self.assertEqual(prefs["music"]["favorite_artist"], "Queen")
+        # Test getting the preference
+        voice = self.memory_manager.get_user_preference("preferred_voice")
+        self.assertEqual(voice, "female")
 
-    def test_save_load_memory(self):
-        """Test saving and loading memory from file."""
-        # Add some data
-        self.memory.add_user_message("Remember this message")
-        self.memory.set_user_preference("personal", "name", "Alice")
-        self.memory.set_context("favorite_color", "blue")
+        # Test default value for non-existent preference
+        unknown = self.memory_manager.get_user_preference("unknown", default="default_value")
+        self.assertEqual(unknown, "default_value")
 
-        # Save memory
-        self.memory._save_to_file()
+        # Test updating a preference
+        self.memory_manager.set_user_preference("preferred_voice", "male")
+        self.assertEqual(self.memory_manager.get_user_preference("preferred_voice"), "male")
 
-        # Create a new memory manager to load from the same file
-        new_memory = MemoryManager(file_path=self.memory_file)
+    def test_context_data(self):
+        """Test setting and getting context data."""
+        # Test setting context data
+        self.memory_manager.set_context_data("last_action", "play_music")
 
-        # Check if loaded data matches
-        self.assertEqual(new_memory._conversations[0]["text"], "Remember this message")
-        self.assertEqual(new_memory._user_preferences["personal"]["name"], "Alice")
-        self.assertEqual(new_memory._context["favorite_color"], "blue")
+        # Verify context was set
+        self.assertEqual(self.memory_manager.context_data["last_action"], "play_music")
 
-    def test_cleanup(self):
-        """Test cleanup method saves data."""
-        # Add some data
-        self.memory.add_user_message("Save on cleanup")
+        # Test getting context data
+        action = self.memory_manager.get_context_data("last_action")
+        self.assertEqual(action, "play_music")
 
-        # Mock the save method to check if it's called
-        with patch.object(self.memory, '_save_to_file') as mock_save:
-            self.memory.cleanup()
-            mock_save.assert_called_once()
+        # Test default value
+        unknown = self.memory_manager.get_context_data("unknown", default="none")
+        self.assertEqual(unknown, "none")
 
-    def test_create_system_prompt(self):
-        """Test creation of system prompt with context."""
-        # Setup context
-        self.memory.add_user_message("Play some music")
-        self.memory.add_assistant_message("Playing your playlist", action="spotify_playback")
-        self.memory.set_user_preference("personal", "name", "Emma")
-        self.memory.set_context("current_app", "spotify")
+    def test_clear_conversation_history(self):
+        """Test clearing conversation history."""
+        # Add some messages
+        self.memory_manager.add_conversation_entry("user", "Test message")
+        self.memory_manager.add_conversation_entry("assistant", "Test reply")
 
-        # Create system prompt for specific intent
-        prompt = self.memory.create_system_prompt("spotify")
+        # Clear history
+        self.memory_manager.clear_conversation_history()
 
-        # Check that prompt contains required context
-        self.assertIn("spotify", prompt)
-        self.assertIn("Emma", prompt)  # User name should be included
-        self.assertIn("Playing your playlist", prompt)  # Recent conversation
+        # Verify conversations were cleared
+        self.assertEqual(len(self.memory_manager.conversation_history), 0)
 
-        # Check that prompt is formatted correctly
-        self.assertTrue(prompt.startswith("You are an AI assistant"))
-        self.assertIn("Recent conversation:", prompt)
-        self.assertIn("User preferences:", prompt)
+        # Verify preferences were not affected
+        self.memory_manager.set_user_preference("test", "value")
+        self.memory_manager.clear_conversation_history()
+        self.assertEqual(self.memory_manager.get_user_preference("test"), "value")
+
+    def test_persistence(self):
+        """Test that memory is persisted to disk."""
+        # Add data
+        self.memory_manager.add_conversation_entry("user", "Test persistence")
+        self.memory_manager.set_user_preference("theme", "dark")
+        self.memory_manager.set_context_data("session_id", "123456")
+
+        # Create a new memory manager with the same data directory
+        # This should load the data we just saved
+        new_manager = MemoryManager(data_dir=self.temp_dir.name)
+
+        # Verify data was loaded
+        self.assertEqual(len(new_manager.conversation_history), 1)
+        self.assertEqual(new_manager.conversation_history[0]["text"], "Test persistence")
+        self.assertEqual(new_manager.user_preferences["theme"], "dark")
+        self.assertEqual(new_manager.context_data["session_id"], "123456")
+
+    def test_export_and_import(self):
+        """Test exporting and importing memory data."""
+        # Add data to export
+        self.memory_manager.add_conversation_entry("user", "Test export")
+        self.memory_manager.set_user_preference("language", "en-US")
+        self.memory_manager.set_context_data("last_query", "weather")
+
+        # Export to a temporary file
+        export_file = os.path.join(self.temp_dir.name, "export.json")
+        success = self.memory_manager.export_memory(export_file)
+        self.assertTrue(success)
+        self.assertTrue(os.path.exists(export_file))
+
+        # Clear data
+        self.memory_manager.clear_conversation_history()
+        self.memory_manager.user_preferences = {}
+        self.memory_manager.context_data = {}
+        self._save_all(self.memory_manager)
+
+        # Import from the file
+        success = self.memory_manager.import_memory(export_file)
+        self.assertTrue(success)
+
+        # Verify data was imported
+        self.assertEqual(len(self.memory_manager.conversation_history), 1)
+        self.assertEqual(self.memory_manager.conversation_history[0]["text"], "Test export")
+        self.assertEqual(self.memory_manager.user_preferences["language"], "en-US")
+        self.assertEqual(self.memory_manager.context_data["last_query"], "weather")
+
+    def _save_all(self, manager):
+        """Helper to save all memory structures."""
+        manager._save_conversation_history()
+        manager._save_user_preferences()
+        manager._save_context_data()
 
 
 # Additional tests with pytest
 
 @pytest.fixture
-def temp_memory_file():
-    """Create a temporary file for memory tests."""
-    fd, temp_path = tempfile.mkstemp(suffix=".json")
-    os.close(fd)
-    yield temp_path
-    os.unlink(temp_path)
+def memory_manager():
+    """Fixture for creating a MemoryManager instance."""
+    # Use a temporary directory for memory storage
+    with tempfile.TemporaryDirectory() as temp_dir:
+        yield MemoryManager(data_dir=temp_dir)
 
-@pytest.fixture
-def memory_manager(temp_memory_file):
-    """Create a memory manager for tests."""
-    return MemoryManager(file_path=temp_memory_file, max_conversations=10)
 
-def test_timestamp_format(memory_manager):
-    """Test that timestamps are properly formatted."""
-    memory_manager.add_user_message("Test timestamp")
-    timestamp = memory_manager._conversations[0]["timestamp"]
+def test_conversation_timestamps(memory_manager):
+    """Test that conversation entries have timestamps."""
+    memory_manager.add_conversation_entry("user", "Test timestamp message")
 
-    # Try to parse the timestamp - should not raise an exception
-    dt = datetime.fromisoformat(timestamp)
+    # Check if timestamp was added
+    assert "timestamp" in memory_manager.conversation_history[0]
+    # Check that timestamp is in ISO format
+    try:
+        datetime.fromisoformat(memory_manager.conversation_history[0]["timestamp"])
+        is_valid = True
+    except ValueError:
+        is_valid = False
+    assert is_valid
 
-    # Should be recent
-    now = datetime.now()
-    difference = now - dt
-    assert difference.total_seconds() < 10  # Within 10 seconds
 
-def test_memory_expiration(temp_memory_file):
-    """Test that old memories expire based on configuration."""
-    # Create memory manager with short expiration time
-    memory = MemoryManager(
-        file_path=temp_memory_file,
-        max_conversations=10,
-        context_expiration_days=1
-    )
+@pytest.mark.parametrize("speaker,message", [
+    ("user", "Hello there!"),
+    ("assistant", "Hi, how can I help?"),
+    ("system", "Processing request...")
+])
+def test_parameterized_conversation_add(memory_manager, speaker, message):
+    """Test adding different types of conversation entries."""
+    memory_manager.add_conversation_entry(speaker, message)
 
-    # Add a memory with an old timestamp
-    old_date = (datetime.now() - timedelta(days=2)).isoformat()
-    memory._conversations.append({
-        "speaker": "user",
-        "text": "Old message",
-        "timestamp": old_date
-    })
+    # Check if entry was added correctly
+    assert len(memory_manager.conversation_history) == 1
+    assert memory_manager.conversation_history[0]["text"] == message
+    assert memory_manager.conversation_history[0]["speaker"] == speaker
 
-    # Add a recent memory
-    memory.add_user_message("New message")
 
-    # Get context - should only include recent memory
-    context = memory.get_conversation_context()
-    exchanges = context["recent_exchanges"]
+def test_persistence_error_handling():
+    """Test error handling when saving to an invalid location."""
+    # Create a memory manager with a problematic directory path
+    with tempfile.TemporaryDirectory() as temp_dir:
+        # Create a file where we want a directory to be (to cause a failure)
+        invalid_dir = os.path.join(temp_dir, "invalid")
+        with open(invalid_dir, 'w') as f:
+            f.write("This is a file, not a directory")
 
-    # Should only have the recent message
-    assert len(exchanges) == 0 or "New message" in exchanges[0]["user"]
-    assert "Old message" not in json.dumps(exchanges)
+        # Create memory manager with the parent directory so initialization works
+        memory_manager = MemoryManager(data_dir=temp_dir)
 
-def test_invalid_memory_file(temp_memory_file):
-    """Test handling of corrupted memory file."""
-    # Write invalid JSON to the memory file
-    with open(temp_memory_file, 'w') as f:
-        f.write("{ this is not valid JSON }")
+        # Replace the data_dir with the invalid path
+        memory_manager.data_dir = invalid_dir
 
-    # Should not crash on invalid JSON
-    memory = MemoryManager(file_path=temp_memory_file)
+        # Add a message (should not raise an exception despite the invalid path)
+        try:
+            memory_manager.add_conversation_entry("user", "Test error handling")
+            # If we get here without an exception, the test passes
+            assert True
+        except Exception:
+            # Should not reach here
+            assert False, "add_conversation_entry should handle file errors gracefully"
 
-    # Should have initialized with empty data
-    assert len(memory._conversations) == 0
-    assert len(memory._user_preferences) == 0
 
-def test_memory_concurrency():
-    """Test memory operations from multiple threads."""
-    import threading
-
-    # Use in-memory storage for this test
-    memory = MemoryManager(persist_user_preferences=False)
-
-    # Function for threads to execute
-    def add_messages(thread_id, count):
-        for i in range(count):
-            memory.add_user_message(f"Message {thread_id}-{i}")
-
-    # Create and start multiple threads
-    threads = []
-    for i in range(5):
-        thread = threading.Thread(target=add_messages, args=(i, 20))
-        threads.append(thread)
-        thread.start()
-
-    # Wait for all threads to complete
-    for thread in threads:
-        thread.join()
-
-    # Check that all messages were added (up to max_conversations limit)
-    assert len(memory._conversations) == memory._max_conversations
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()
