@@ -1,342 +1,272 @@
-#!/usr/bin/env python3
 """
 Memory Manager Module
 
-This module handles conversation history, context management, and user preferences.
-It provides persistence across sessions and supports context-aware responses.
+This module manages user interactions history, preferences, and session data.
+It provides persistence and recall capabilities for the assistant.
 """
 
-import os
 import json
-import logging
-from datetime import datetime, timedelta
-from collections import deque
-import threading
+import os
+from datetime import datetime
+from pathlib import Path
+from typing import Dict, List, Optional, Any, Union
 
-# Configure logger
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
-logger = logging.getLogger("MemoryManager")
 
 class MemoryManager:
     """
-    Manages conversation history, user preferences, and contextual information.
-    Provides persistence across assistant sessions.
+    Manages conversation history, user preferences, and session data.
     """
 
-    def __init__(self, file_path=None, max_conversations=50,
-                 max_conversation_length=20, persist_user_preferences=True,
-                 context_expiration_days=7):
+    def __init__(self, data_dir: str = None):
         """
-        Initialize the memory manager.
+        Initialize the memory manager with a data directory.
 
         Args:
-            file_path (str): Path to the memory persistence file
-            max_conversations (int): Maximum number of conversations to store
-            max_conversation_length (int): Maximum number of messages in a conversation
-            persist_user_preferences (bool): Whether to save user preferences to disk
-            context_expiration_days (int): Number of days before conversation context expires
+            data_dir: Directory to store memory data. If None, uses a default location.
         """
-        self._conversations = []
-        self._context = {}
-        self._user_preferences = {}
-        self._max_conversations = max_conversations
-        self._max_conversation_length = max_conversation_length
-        self._persist_preferences = persist_user_preferences
-        self._context_expiration_days = context_expiration_days
-        self._lock = threading.RLock()
-
-        # Set default file path if not provided
-        if file_path is None:
-            home_dir = os.path.expanduser("~")
-            self._file_path = os.path.join(home_dir, ".samantha", "memory.json")
+        if data_dir is None:
+            # Use a sensible default if no directory is specified
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            self.data_dir = os.path.join(base_dir, "data", "memory")
         else:
-            self._file_path = file_path
+            self.data_dir = data_dir
 
-        # Create directory if it doesn't exist
-        os.makedirs(os.path.dirname(self._file_path), exist_ok=True)
+        # Ensure the directory exists
+        os.makedirs(self.data_dir, exist_ok=True)
 
-        # Load memory from file if it exists
-        self._load_from_file()
+        # Define paths for different types of memory
+        self.history_path = os.path.join(self.data_dir, "conversation_history.json")
+        self.preferences_path = os.path.join(self.data_dir, "user_preferences.json")
+        self.context_path = os.path.join(self.data_dir, "context_data.json")
 
-    def add_user_message(self, text):
+        # Initialize memory structures
+        self.conversation_history: List[Dict[str, Any]] = []
+        self.user_preferences: Dict[str, Any] = {}
+        self.context_data: Dict[str, Any] = {}
+
+        # Load existing data if available
+        self._load_memory()
+
+    def _load_memory(self) -> None:
+        """Load all memory data from disk."""
+        self._load_conversation_history()
+        self._load_user_preferences()
+        self._load_context_data()
+
+    def _load_conversation_history(self) -> None:
+        """Load conversation history from disk."""
+        try:
+            if os.path.exists(self.history_path) and os.path.getsize(self.history_path) > 0:
+                with open(self.history_path, 'r', encoding='utf-8') as f:
+                    self.conversation_history = json.load(f)
+        except (json.JSONDecodeError, FileNotFoundError) as e:
+            print(f"Error loading conversation history: {e}")
+            self.conversation_history = []
+
+    def _load_user_preferences(self) -> None:
+        """Load user preferences from disk."""
+        try:
+            if os.path.exists(self.preferences_path) and os.path.getsize(self.preferences_path) > 0:
+                with open(self.preferences_path, 'r', encoding='utf-8') as f:
+                    self.user_preferences = json.load(f)
+        except (json.JSONDecodeError, FileNotFoundError) as e:
+            print(f"Error loading user preferences: {e}")
+            self.user_preferences = {}
+
+    def _load_context_data(self) -> None:
+        """Load context data from disk."""
+        try:
+            if os.path.exists(self.context_path) and os.path.getsize(self.context_path) > 0:
+                with open(self.context_path, 'r', encoding='utf-8') as f:
+                    self.context_data = json.load(f)
+        except (json.JSONDecodeError, FileNotFoundError) as e:
+            print(f"Error loading context data: {e}")
+            self.context_data = {}
+
+    def _save_conversation_history(self) -> None:
+        """Save conversation history to disk."""
+        try:
+            with open(self.history_path, 'w', encoding='utf-8') as f:
+                json.dump(self.conversation_history, f, indent=2)
+        except Exception as e:
+            print(f"Error saving conversation history: {e}")
+
+    def _save_user_preferences(self) -> None:
+        """Save user preferences to disk."""
+        try:
+            with open(self.preferences_path, 'w', encoding='utf-8') as f:
+                json.dump(self.user_preferences, f, indent=2)
+        except Exception as e:
+            print(f"Error saving user preferences: {e}")
+
+    def _save_context_data(self) -> None:
+        """Save context data to disk."""
+        try:
+            with open(self.context_path, 'w', encoding='utf-8') as f:
+                json.dump(self.context_data, f, indent=2)
+        except Exception as e:
+            print(f"Error saving context data: {e}")
+
+    def add_conversation_entry(self, speaker: str, text: str,
+                              timestamp: Optional[datetime] = None) -> None:
         """
-        Add a user message to conversation history.
+        Add a new entry to the conversation history.
 
         Args:
-            text (str): The message text
+            speaker: Who spoke (user, assistant, system)
+            text: What was said
+            timestamp: When it was said (defaults to current time)
         """
-        with self._lock:
-            self._add_message(text, "user")
+        if timestamp is None:
+            timestamp = datetime.now()
 
-    def add_assistant_message(self, text, action=None):
-        """
-        Add an assistant message to conversation history.
-
-        Args:
-            text (str): The message text
-            action (str, optional): The action taken by the assistant
-        """
-        with self._lock:
-            message = self._add_message(text, "assistant")
-            if action:
-                message["action"] = action
-
-    def _add_message(self, text, speaker):
-        """
-        Add a message to the conversation history.
-
-        Args:
-            text (str): The message text
-            speaker (str): Who is speaking ('user' or 'assistant')
-
-        Returns:
-            dict: The message that was added
-        """
-        message = {
-            "text": text,
+        entry = {
             "speaker": speaker,
-            "timestamp": datetime.now().isoformat()
+            "text": text,
+            "timestamp": timestamp.isoformat()
         }
 
-        self._conversations.append(message)
+        self.conversation_history.append(entry)
+        self._save_conversation_history()
 
-        # Limit the number of messages
-        if len(self._conversations) > self._max_conversation_length:
-            self._conversations = self._conversations[-self._max_conversation_length:]
-
-        return message
-
-    def get_conversation_context(self):
+    def get_conversation_history(self, n_recent: int = None) -> List[Dict[str, Any]]:
         """
-        Get recent conversation context for contextual understanding.
-
-        Returns:
-            dict: Context information including recent exchanges
-        """
-        with self._lock:
-            context = {
-                "recent_exchanges": []
-            }
-
-            if not self._conversations:
-                return context
-
-            # Filter out expired conversations
-            cutoff_date = datetime.now() - timedelta(days=self._context_expiration_days)
-            recent_conversations = []
-
-            for message in self._conversations:
-                try:
-                    msg_time = datetime.fromisoformat(message["timestamp"])
-                    if msg_time >= cutoff_date:
-                        recent_conversations.append(message)
-                except (ValueError, KeyError):
-                    # If timestamp is invalid, keep the message anyway
-                    recent_conversations.append(message)
-
-            # Group into user-assistant exchanges
-            exchanges = []
-            current_exchange = {"user": None, "assistant": None}
-
-            for message in recent_conversations:
-                if message["speaker"] == "user":
-                    if current_exchange["user"] is not None:
-                        # Start a new exchange
-                        if current_exchange["assistant"] is not None:
-                            exchanges.append(current_exchange.copy())
-                        current_exchange = {"user": None, "assistant": None}
-                    current_exchange["user"] = message["text"]
-                elif message["speaker"] == "assistant":
-                    if current_exchange["user"] is not None:
-                        current_exchange["assistant"] = message["text"]
-                        if "action" in message:
-                            current_exchange["action"] = message["action"]
-                        exchanges.append(current_exchange.copy())
-                        current_exchange = {"user": None, "assistant": None}
-
-            # Add the last exchange if it's complete
-            if current_exchange["user"] is not None and current_exchange["assistant"] is not None:
-                exchanges.append(current_exchange)
-
-            context["recent_exchanges"] = exchanges
-            return context
-
-    def set_context(self, key, value):
-        """
-        Set a context variable.
+        Get conversation history, optionally limited to recent entries.
 
         Args:
-            key (str): Context key
-            value: Context value
-        """
-        with self._lock:
-            self._context[key] = value
-
-    def get_context(self, key, default=None):
-        """
-        Get a context variable.
-
-        Args:
-            key (str): Context key
-            default: Default value if key doesn't exist
+            n_recent: Number of most recent entries to return. If None, returns all.
 
         Returns:
-            The context value or default
+            List of conversation entries
         """
-        with self._lock:
-            return self._context.get(key, default)
+        if n_recent is None:
+            return self.conversation_history
+        return self.conversation_history[-n_recent:]
 
-    def set_user_preference(self, category, key, value):
+    def set_user_preference(self, key: str, value: Any) -> None:
         """
         Set a user preference.
 
         Args:
-            category (str): Preference category
-            key (str): Preference key
+            key: Preference key
             value: Preference value
         """
-        with self._lock:
-            if category not in self._user_preferences:
-                self._user_preferences[category] = {}
-            self._user_preferences[category][key] = value
+        self.user_preferences[key] = value
+        self._save_user_preferences()
 
-            if self._persist_preferences:
-                self._save_to_file()
-
-    def get_user_preference(self, category, key, default=None):
+    def get_user_preference(self, key: str, default: Any = None) -> Any:
         """
         Get a user preference.
 
         Args:
-            category (str): Preference category
-            key (str): Preference key
+            key: Preference key
             default: Default value if preference doesn't exist
 
         Returns:
-            The preference value or default
+            Preference value or default
         """
-        with self._lock:
-            if category in self._user_preferences and key in self._user_preferences[category]:
-                return self._user_preferences[category][key]
-            return default
+        return self.user_preferences.get(key, default)
 
-    def get_user_preferences(self):
+    def set_context_data(self, key: str, value: Any) -> None:
         """
-        Get all user preferences.
-
-        Returns:
-            dict: All user preferences
-        """
-        with self._lock:
-            return self._user_preferences.copy()
-
-    def _load_from_file(self):
-        """Load memory from persistent storage."""
-        if not os.path.exists(self._file_path):
-            return
-
-        try:
-            with open(self._file_path, 'r') as f:
-                data = json.load(f)
-
-            if "conversations" in data and isinstance(data["conversations"], list):
-                self._conversations = data["conversations"]
-                # Limit to max size
-                if len(self._conversations) > self._max_conversations:
-                    self._conversations = self._conversations[-self._max_conversations:]
-
-            if "context" in data and isinstance(data["context"], dict):
-                self._context = data["context"]
-
-            if "user_preferences" in data and isinstance(data["user_preferences"], dict):
-                self._user_preferences = data["user_preferences"]
-
-            logger.info(f"Memory loaded from {self._file_path}")
-        except Exception as e:
-            logger.error(f"Error loading memory: {str(e)}")
-
-    def _save_to_file(self):
-        """Save memory to persistent storage."""
-        try:
-            data = {
-                "conversations": self._conversations,
-                "context": self._context,
-                "user_preferences": self._user_preferences
-            }
-
-            # Ensure directory exists
-            os.makedirs(os.path.dirname(self._file_path), exist_ok=True)
-
-            with open(self._file_path, 'w') as f:
-                json.dump(data, f, indent=2)
-
-            logger.info(f"Memory saved to {self._file_path}")
-        except Exception as e:
-            logger.error(f"Error saving memory: {str(e)}")
-
-    def cleanup(self):
-        """Clean up resources before shutting down."""
-        with self._lock:
-            self._save_to_file()
-
-    def create_system_prompt(self, intent=None):
-        """
-        Create a system prompt with relevant context for a specific intent.
+        Set context data.
 
         Args:
-            intent (str, optional): The intent for which to create the prompt
+            key: Context key
+            value: Context value
+        """
+        self.context_data[key] = value
+        self._save_context_data()
+
+    def get_context_data(self, key: str, default: Any = None) -> Any:
+        """
+        Get context data.
+
+        Args:
+            key: Context key
+            default: Default value if context doesn't exist
 
         Returns:
-            str: A system prompt with context
+            Context value or default
         """
-        with self._lock:
-            # Base system prompt
-            prompt = "You are an AI assistant named Samantha. "
-            prompt += "You are helpful, concise, and friendly. "
+        return self.context_data.get(key, default)
 
-            # Add user preference context
-            user_prefs = self.get_user_preferences()
-            if user_prefs:
-                prompt += "\n\nUser preferences:\n"
-                for category, prefs in user_prefs.items():
-                    for key, value in prefs.items():
-                        prompt += f"- {category} {key}: {value}\n"
+    def clear_conversation_history(self) -> None:
+        """Clear all conversation history."""
+        self.conversation_history = []
+        self._save_conversation_history()
 
-            # Add conversation context
-            context = self.get_conversation_context()
-            recent_exchanges = context.get("recent_exchanges", [])
+    def export_memory(self, filepath: str) -> bool:
+        """
+        Export all memory data to a file.
 
-            if recent_exchanges:
-                prompt += "\n\nRecent conversation:\n"
-                for exchange in recent_exchanges[-3:]:  # Last 3 exchanges
-                    prompt += f"User: {exchange.get('user', '')}\n"
-                    prompt += f"You: {exchange.get('assistant', '')}\n"
+        Args:
+            filepath: Path to export file
 
-            # Add intent-specific context
-            if intent:
-                intent_context = self.get_context(f"intent_{intent}")
-                if intent_context:
-                    prompt += f"\n\nContext for {intent}:\n{intent_context}\n"
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            memory_data = {
+                "conversation_history": self.conversation_history,
+                "user_preferences": self.user_preferences,
+                "context_data": self.context_data,
+                "exported_at": datetime.now().isoformat()
+            }
 
-                if intent == "spotify":
-                    current_song = self.get_context("current_song")
-                    if current_song:
-                        prompt += f"\nCurrently playing: {current_song}\n"
+            with open(filepath, 'w', encoding='utf-8') as f:
+                json.dump(memory_data, f, indent=2)
+            return True
+        except Exception as e:
+            print(f"Error exporting memory: {e}")
+            return False
 
-            return prompt
+    def import_memory(self, filepath: str) -> bool:
+        """
+        Import memory data from a file.
 
-# Default memory manager instance
+        Args:
+            filepath: Path to import file
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            if not os.path.exists(filepath):
+                print(f"Import file not found: {filepath}")
+                return False
+
+            with open(filepath, 'r', encoding='utf-8') as f:
+                memory_data = json.load(f)
+
+            if "conversation_history" in memory_data:
+                self.conversation_history = memory_data["conversation_history"]
+                self._save_conversation_history()
+
+            if "user_preferences" in memory_data:
+                self.user_preferences = memory_data["user_preferences"]
+                self._save_user_preferences()
+
+            if "context_data" in memory_data:
+                self.context_data = memory_data["context_data"]
+                self._save_context_data()
+
+            return True
+        except Exception as e:
+            print(f"Error importing memory: {e}")
+            return False
+
+
+# Create an instance for easy importing
 memory_manager = MemoryManager()
 
-if __name__ == "__main__":
-    # Test code for direct execution
-    memory = MemoryManager()
-    memory.add_user_message("Hello Samantha!")
-    memory.add_assistant_message("Hello! How can I help you today?")
-    memory.set_user_preference("personal", "name", "Alex")
 
-    print("Context:", memory.get_conversation_context())
-    memory.cleanup()
+if __name__ == "__main__":
+    # Example usage
+    mm = MemoryManager()
+    mm.add_conversation_entry("user", "Hello, how are you?")
+    mm.add_conversation_entry("assistant", "I'm doing well, thank you! How can I help you today?")
+    mm.set_user_preference("theme", "dark")
+
+    print(f"Conversation history: {mm.get_conversation_history()}")
+    print(f"User preferences: {mm.user_preferences}")

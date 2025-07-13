@@ -1,0 +1,54 @@
+{
+  "greeting": {
+    "patterns": [
+      "hello",
+      "hi",
+      "hey",
+      "good morning",
+      "good afternoon"
+    ],
+    "responses": [
+      "Hello! How can I help you?"
+    ]
+  },
+  "farewell": {
+    "patterns": [
+      "goodbye",
+      "bye",
+      "see you",
+      "exit"
+    ],
+    "responses": [
+      "Goodbye! Have a nice day!"
+    ]
+  },
+  "weather": {
+    "patterns": [
+      "weather",
+      "temperature",
+      "forecast",
+      "rain",
+      "snow"
+    ],
+    "responses": [
+      "Here's the weather forecast."
+    ]
+  },
+  "default": {
+    "patterns": [],
+    "responses": [
+      "I'm not sure how to respond to that."
+    ]
+  },
+  "music": {
+    "patterns": [
+      "play music",
+      "song",
+      "playlist",
+      "album"
+    ],
+    "responses": [
+      "I'll play some music for you."
+    ]
+  }
+}

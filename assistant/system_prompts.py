@@ -26,7 +26,9 @@ class SystemPromptManager:
                          Defaults to a 'prompts' directory in the same folder as this module.
         """
         if prompts_dir is None:
-            self.prompts_dir = Path(os.path.dirname(os.path.abspath(__file__))) / "prompts"
+            # Use os.path.join instead of / operator to avoid the str/str error
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            self.prompts_dir = Path(os.path.join(base_dir, "prompts"))
         else:
             self.prompts_dir = Path(prompts_dir)
 
@@ -94,7 +96,10 @@ class SystemPromptManager:
         """Save a prompt to its appropriate file based on category."""
         # Determine which file this prompt belongs to
         category = context.split('.')[0] if '.' in context else "general"
-        file_path = self.prompts_dir / f"{category}_prompts.json"
+
+        # Use os.path.join instead of / operator for file path construction
+        file_path = os.path.join(self.prompts_dir, f"{category}_prompts.json")
+        file_path = Path(file_path)
 
         # Load existing file or create new
         if file_path.exists():
@@ -149,7 +154,10 @@ def create_default_prompts():
 
     # Save each category to its own file
     for category, prompts in categorized_prompts.items():
-        file_path = manager.prompts_dir / f"{category}_prompts.json"
+        # Use os.path.join instead of / operator
+        file_path = os.path.join(manager.prompts_dir, f"{category}_prompts.json")
+        file_path = Path(file_path)
+
         if not file_path.exists():
             with open(file_path, "w", encoding="utf-8") as f:
                 json.dump(prompts, f, indent=2)
